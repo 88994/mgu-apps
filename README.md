@@ -5,9 +5,9 @@ Eigene Apps für BMW MGU / iDrive 7, installierbar über den [MGU Store](https:/
 
 ## Apps
 
-- **DPF Monitor 0.1.0** (`apps/dpf_monitor/`) – drei Seiten für Live-Werte, Regeneration und Historie. Aktuell noch Demo-/Platzhalterwerte; keine verifizierten DDE-DPF-Daten. Eigenes `icon.png` (140 × 140) und editierbare SVG-Vorlage sind enthalten.
+- **DPF Monitor 0.1.0** (`apps/dpf_monitor/`) – drei Seiten für Live-Werte, Regeneration und Historie. Derzeit Demo-/Platzhalterwerte; keine verifizierten DDE-DPF-Messwerte. Mit eigenem Icon (`icon.png`, 140 × 140) und SVG-Vorlage.
 
-## Verzeichnisstruktur
+## Aufbau
 
 ```text
 mgu-apps/
@@ -23,17 +23,18 @@ mgu-apps/
       app.json
       main.js
       icon.png
-  kit/              # Noch einzubinden: Runtime/Build-Werkzeuge aus idrive7-apps
+  kit/                 # Build-Werkzeuge, Runtime, Schriftsätze und Icons
+  THIRD_PARTY_NOTICES.md
 ```
 
-`mgu-repo.json` erkennt automatisch jeden direkten Unterordner von `apps/` mit `app.json`. Jede App benötigt eine eindeutige `id` und `version` in `x.y.z`. Für Updates `version` erhöhen und auf `main` veröffentlichen.
+Die Datei `mgu-repo.json` erkennt automatisch jeden direkten Unterordner von `apps/` mit einer `app.json`. Neue Apps brauchen eine eindeutige `id` und `version` im Format `x.y.z`. Für Updates die Version erhöhen und auf `main` veröffentlichen.
 
-## Fehlender Schritt vor Store-Installation
+## Build und Veröffentlichung
 
-Die App-Quellen sind hochgeladen. **Der Build aus diesem Repository ist noch nicht ausführbar**, weil `kit/` fehlt. Die benötigten Runtime- und Build-Dateien müssen aus [idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps) unter Beachtung der Lizenzen ergänzt und der Build getestet werden.
+Der MGU Store folgt dem Branch `main`, stellt beim Headunit-Build das `oap-sdk` aus einer vorhandenen BMW-App bereit und führt `kit/tools/build.py` aus. Das Repository enthält die für englische App-Pakete benötigten Build-/Runtime-Dateien aus [idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps), aber keine großen Tests oder zusätzlichen chinesischen Schrift-/Lokalisierungspakete. Ein echter Build auf der MGU wurde noch nicht durchgeführt. Renderer und Controller-Gate sind als Abhängigkeiten auf das mitgelieferte `idrive7-apps`-Repository des Stores eingetragen.
 
-Keine privaten SSH-Schlüssel, VIN-Dateien, Fahrzeug-Backups oder das aus der BMW-Headunit extrahierte `oap-sdk/` hochladen.
+Das BMW-SDK (`oap-sdk/`), private SSH-Schlüssel, VIN-Dateien und Fahrzeug-Backups **nicht** hochladen.
 
-## Als Quelle hinzufügen
+## Store-Quelle
 
-Im MGU Store **Settings → Add source**: `NamelsMissing/mgu-apps`, Branch `main`. Das Repository ist privat und erfordert GitHub-Zugriff im Store.
+In **Settings → Add source** `NamelsMissing/mgu-apps` eingeben und `main` wählen. Das Repository ist derzeit privat; daher braucht der Store einen GitHub-Zugang mit Lesezugriff.
