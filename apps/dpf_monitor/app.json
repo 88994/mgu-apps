@@ -1,0 +1,36 @@
+{
+  "id": "dpf_monitor",
+  "title": "DPF Monitor",
+  "description": "DPF monitor foundation: live engine context and CBS service information; unverified DPF measurements remain unavailable",
+  "version": "0.1.0",
+  "vendor": "custom",
+  "loggingId": "OA9D",
+  "iconGlyph": "DPF",
+  "signals": {
+    "de.bmw.infotainment.vehicle.CDS": {
+      "statusEngineSpeed2": "rs",
+      "statusEngineTemperature": "rs"
+    },
+    "de.bmw.infotainment.ConditionBasedServicesLegacy": {
+      "cBSMessageParticleFilter": "s"
+    }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "DPF Monitor",
+      "buttons": [["BTN_PAGE", "Next page"], ["BTN_SETTINGS", "Settings"]]
+    }
+  ],
+  "settings": [
+    {"key": "theme", "label": "Colour theme", "type": "choice", "default": "m_tricolour",
+     "options": [["m_tricolour", "M Tricolour"], ["m_red", "M Red"], ["ice", "Ice White"], ["amber", "Night Amber"]]},
+    {"key": "layout", "label": "Screen layout", "type": "choice", "default": "full",
+     "options": [["full", "Full screen"], ["standard", "Standard"]]},
+    {"key": "renderer", "label": "Renderer", "type": "choice", "default": "auto",
+     "options": [["auto", "GPU 60 fps"], ["software", "Software"]]},
+    {"key": "demo", "label": "Simulated DPF data", "type": "choice", "default": "off",
+     "options": [["off", "Off (real car only)"], ["on", "On (simulation)"]]}
+  ]
+}
