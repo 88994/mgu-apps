@@ -5,7 +5,9 @@ Eigene Apps für BMW MGU / iDrive 7, installierbar über den [MGU Store](https:/
 
 ## Apps
 
-- **DPF Monitor 0.1.0** (`apps/dpf_monitor/`) – drei Seiten für Live-Werte, Regeneration und Historie. Derzeit Demo-/Platzhalterwerte; keine verifizierten DDE-DPF-Messwerte. Mit eigenem Icon (`icon.png`, 140 × 140) und SVG-Vorlage.
+- **DPF Monitor 0.2.0** (`apps/dpf_monitor/`) – drei Seiten für Live-Werte, Regeneration und Historie. Experimentelle, standardmäßig deaktivierte UDS-Leseabfragen mit DPF-Kennungen aus der D83BX7C0-PRG; noch keine am Fahrzeug verifizierten Werte. Mit eigenem Icon (`icon.png`, 140 × 140) und SVG-Vorlage.
+
+Die DID-Tabelle und den Prüfplan findest du unter [DPF-Monitor-DDE-Diagnose](apps/dpf_monitor/DDE_D83BX7C0.md). Der DDE-Lesetest muss in den App-Einstellungen ausdrücklich aktiviert werden; die Regenerationsanzeige bleibt bis zur Validierung unbekannt.
 
 ## Aufbau
 
@@ -16,6 +18,8 @@ mgu-apps/
     dpf_monitor/
       app.json
       main.js
+      dpf-dids.js
+      DDE_D83BX7C0.md
       README.md
       icon.png
       icon.svg
