@@ -2,7 +2,7 @@
   "id": "g21_ambient",
   "title": "G21 Ambient Lighting",
   "description": "RGB color picker, temporary LIN test and safe iDrive slot 11 FDL preparation (no automatic FDL writing)",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB1",
   "iconGlyph": "RGB",
@@ -25,17 +25,17 @@
                 ["BTN_RESTORE", "Slot 11 factory plan"], ["BTN_SETTINGS", "All settings"]]
   }],
   "settings": [
-    {"key": "colorMode", "label": "Color mode", "type": "choice", "default": "preset", "options": [["preset", "Presets"], ["custom", "Custom color / picker"]]},
-    {"key": "presetColor", "label": "Preset color", "type": "choice", "default": "0", "options": [["0", "Warm white"], ["1", "Blue"], ["2", "Red"], ["3", "Green"], ["4", "Violet"], ["5", "Off"]]},
-    {"key": "customHue", "label": "Picker hue", "type": "number", "unit": "degrees", "default": 210, "steps": [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300, 315, 330, 345]},
-    {"key": "customSat", "label": "Picker saturation", "type": "number", "unit": "%", "default": 100, "steps": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]},
-    {"key": "customRed", "label": "RGB red", "type": "number", "default": 0, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
-    {"key": "customGreen", "label": "RGB green", "type": "number", "default": 127, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
-    {"key": "customBlue", "label": "RGB blue", "type": "number", "default": 254, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
-    {"key": "applyTarget", "label": "Apply mode", "type": "choice", "default": "temporary", "options": [["temporary", "Temporary LIN test"], ["slot11", "iDrive menu slot 11 (FDL plan)"]]},
-    {"key": "brightness", "label": "Brightness", "type": "number", "unit": "%", "default": 50, "steps": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]},
+    {"key": "colorMode", "label": "Color mode", "hidden": true, "type": "choice", "default": "preset", "options": [["preset", "Presets"], ["custom", "Custom color / picker"]]},
+    {"key": "presetColor", "label": "Preset color", "hidden": true, "type": "choice", "default": "0", "options": [["0", "Warm white"], ["1", "Blue"], ["2", "Red"], ["3", "Green"], ["4", "Violet"], ["5", "Off"]]},
+    {"key": "customHue", "label": "Picker hue", "hidden": true, "type": "number", "unit": "degrees", "default": 210, "steps": [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240, 255, 270, 285, 300, 315, 330, 345]},
+    {"key": "customSat", "label": "Picker saturation", "hidden": true, "type": "number", "unit": "%", "default": 100, "steps": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]},
+    {"key": "customRed", "label": "RGB red", "hidden": true, "type": "number", "default": 0, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
+    {"key": "customGreen", "label": "RGB green", "hidden": true, "type": "number", "default": 127, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
+    {"key": "customBlue", "label": "RGB blue", "hidden": true, "type": "number", "default": 254, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
+    {"key": "applyTarget", "label": "Apply mode", "hidden": true, "type": "choice", "default": "temporary", "options": [["temporary", "Temporary LIN test"], ["slot11", "iDrive menu slot 11 (FDL plan)"]]},
+    {"key": "brightness", "label": "Brightness", "hidden": true, "type": "number", "unit": "%", "default": 50, "steps": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]},
     {"key": "linId", "label": "LIN RGB module (0 = all)", "type": "number", "default": 1, "steps": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]},
     {"key": "duration", "label": "Control duration", "type": "number", "unit": "s", "default": 5, "steps": [1, 2, 5, 10, 20, 30, 60, 120, 254]},
-    {"key": "engineeringWrites", "label": "Experimental ECU writes (2E test only)", "type": "bool", "default": false}
+    {"key": "engineeringWrites", "label": "Permit temporary LIN control (unverified)", "type": "bool", "default": false}
   ]
 }

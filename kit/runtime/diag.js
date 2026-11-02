@@ -29,6 +29,19 @@ function toBytes(b) {
 }
 const hex = (n, w) => n.toString(16).toUpperCase().padStart(w || 2, '0');
 
+/** Only match a reply to the selected UDS 0x22 / 0x2E DID (or its NRC).
+ * Both positive services echo the two-byte DID: 0x62 / 0x6E, respectively.
+ * The safe diagnostic wrappers use this predicate to reject stray ECU frames.
+ */
+function replyTo(sid, data) {
+    if ((sid !== 0x22 && sid !== 0x2E) || !Array.isArray(data) || data.length < 2)
+        throw new TypeError('replyTo requires a 0x22/0x2E DID request');
+    return (uds) => Array.isArray(uds) && (
+        (uds.length >= 3 && uds[0] === sid + 0x40 && uds[1] === data[0] && uds[2] === data[1]) ||
+        (uds.length >= 3 && uds[0] === 0x7F && uds[1] === sid)
+    );
+}
+
 const NRC = {
     0x10: 'general reject', 0x11: 'service not supported', 0x12: 'sub-function not supported', 0x13: 'bad length',
     0x21: 'busy', 0x22: 'conditions not correct', 0x31: 'out of range', 0x33: 'security access denied',
@@ -180,4 +193,4 @@ function statusInfo(b) {
     return { label: 'HISTORY', sev: 'dim' };
 }
 
-module.exports = { Diag, parseDtcReply, statusInfo, toBytes, hex, NRC, ALL };
+module.exports = { Diag, parseDtcReply, statusInfo, toBytes, hex, NRC, ALL, replyTo };

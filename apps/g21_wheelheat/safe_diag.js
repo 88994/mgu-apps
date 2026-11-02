@@ -13,7 +13,7 @@ class SafeDiag {
         this.speedAt = 0;
         this.readAt = 0;
         this.readText = 'not read yet';
-        this.info = 'Offline preview. Writes disabled by default.';
+        this.info = 'Live ECU commands disabled until explicitly enabled.';
         this.pending = null;
         this.busy = false;
         this.lastWriteAt = 0;
@@ -35,7 +35,7 @@ class SafeDiag {
     get parked() { return this.speed !== null && this.speed <= 0.5 && Date.now() - this.speedAt < 5000; }
     get verified() { return this.readAt > 0 && Date.now() - this.readAt < 60000; }
     get writeReady() {
-        if (this.ctx.settings.get('engineeringWrites') !== true) return 'Writes disabled in Settings';
+        if (this.ctx.settings.get('liveControl') !== true) return 'Live BDC control disabled in Settings';
         if (!this.online) return 'TASU/ECU unavailable';
         if (!this.verified) return 'Read status first (max. 60s)';
         if (!this.parked) return 'Vehicle standstill not confirmed';
@@ -84,6 +84,31 @@ class SafeDiag {
             } else this.info = errorFor(u);
         } catch (e) { this.info = 'Write error: ' + String(e.message || e); }
         finally { this.busy = false; }
+    }
+    /** Automation-specific write: the Settings opt-in authorizes commands,
+     * but each command STILL requires a fresh 22 read and confirmed standstill.
+     * No simulator or unknown-speed command is ever sent to the vehicle.
+     * Returns true only on a positive 0x6E reply (not proof of physical heat).
+     */
+    async autoWrite(data, label) {
+        if (this.busy) { this.info = 'BDC busy'; return false; }
+        const reason = this.writeReady;
+        if (reason) { this.info = reason; return false; }
+        this.busy = true;
+        this.info = 'Sending ' + label + ' to BDC ...';
+        try {
+            const u = await this.diag.physical(this.target, 0x2E, data, 2300,
+                replyTo(0x2E, data), { maxRetries: 0 });
+            if (u && u[0] === 0x6E && u[1] === data[0] && u[2] === data[1]) {
+                this.info = label + ': BDC acknowledged (physical result unverified)';
+                this.lastWriteAt = Date.now();
+                this.readAt = 0;
+                return true;
+            }
+            this.info = label + ': ' + errorFor(u);
+        } catch (e) { this.info = label + ': ' + String(e.message || e); }
+        finally { this.busy = false; }
+        return false;
     }
 }
 function bytes(b) { return Array.from(b || []).map(n => hex(n)).join(' '); }

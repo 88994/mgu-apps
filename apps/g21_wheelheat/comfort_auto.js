@@ -2,8 +2,8 @@
 
 /**
  * Pure, deterministic comfort planner. No ECU access here.
- * Intents are a PREVIEW only; a validated, separately authorized controller
- * would have to consume them. One cycle per running process, never retrigger
+ * Its intents must pass a separately authorized, fail-closed ECU controller.
+ * One cycle per running process, never retrigger
  * cold conditions repeatedly (manual cabin settings remain authoritative).
  */
 const COLD_DWELL_MS = 15000;
@@ -24,7 +24,7 @@ class ComfortAuto {
             const e = { type, device, data, at: now };
             out.push(e);
             this.events.push(e);
-            this.lastEvent = device + ' ' + (type === 'ON' ? 'ON (preview)' : 'OFF (preview)');
+            this.lastEvent = device + ' ' + type + ' requested (not ECU-confirmed)';
         };
         const enabled = !!cfg.autoEnabled;
         // Complete previously started sessions even if the sensor falls silent.

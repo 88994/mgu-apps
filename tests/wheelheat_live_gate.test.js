@@ -1,0 +1,44 @@
+'use strict';
+// Offline safety unit test. No vehicle writes are made.
+const assert = require('assert');
+const Module = require('module');
+const originalResolve = Module._resolveFilename;
+Module._resolveFilename = function(request, parent, ...rest) {
+    if (request === './kit/diag' && parent && parent.filename.endsWith('/g21_wheelheat/safe_diag.js'))
+        return require.resolve('../kit/runtime/diag');
+    return originalResolve.call(this, request, parent, ...rest);
+};
+const { SafeDiag } = require('../apps/g21_wheelheat/safe_diag');
+Module._resolveFilename = originalResolve;
+
+async function run() {
+    let permit = false, calls = 0;
+    const ctx = { settings: { get: () => permit }, signals: {}, log: { info() {}, warn() {} } };
+    const ctl = new SafeDiag(ctx, 0x40, 0xD074);
+    ctl.diag.p = {};
+    ctl.diag.available = true;
+    ctl.diag.physical = async () => { calls++; return [0x6E, 0xD0, 0x74]; };
+    const data = [0xD0, 0x74, 0x3C];
+    const fresh = () => { ctl.readAt = Date.now(); };
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), false, 'off by default');
+    assert.equal(calls, 0);
+    permit = true;
+    fresh();
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), false, 'unknown speed blocks');
+    assert.equal(calls, 0);
+    ctl.speed = 0;
+    ctl.speedAt = Date.now();
+    fresh();
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), true, 'positive BDC reply');
+    assert.equal(calls, 1);
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), false, 'fresh ECU read required');
+    assert.equal(calls, 1);
+    ctl.speed = 10;
+    ctl.speedAt = Date.now();
+    ctl.lastWriteAt = 0;
+    fresh();
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), false, 'vehicle moving');
+    assert.equal(calls, 1);
+    console.log('OK: no writes without opt-in, ECU read and verified standstill');
+}
+run().catch(e => { console.error(e); process.exitCode = 1; });

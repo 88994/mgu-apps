@@ -1,0 +1,44 @@
+'use strict';
+
+// Run offline with: node tests/g21_car_ui_smoke.test.js
+// These checks validate navigation and controls without claiming ECU tests.
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.resolve(__dirname, '..');
+const source = (app) => fs.readFileSync(path.join(root, 'apps', app, 'main.js'), 'utf8');
+const spec = (app) => require(path.join(root, 'apps', app, 'app.json'));
+const ambient = source('g21_ambient');
+const wheel = source('g21_wheelheat');
+const dpf = source('dpf_monitor');
+
+assert.match(dpf, /ctx\.onTab\(\(index\)/, 'DPF pages must receive header tab taps');
+assert.equal(spec('dpf_monitor').settings.find(s => s.key === 'dde_live').default, 'on');
+assert.deepStrictEqual([...ambient.matchAll(/const TABS = \[([^\]]+)\]/g)].map(m => m[1]),
+    ["'Color', 'Diagnostics'"], 'only one native Settings tab in Ambient');
+assert.deepStrictEqual([...wheel.matchAll(/const TABS = \[([^\]]+)\]/g)].map(m => m[1]),
+    ["'Comfort', 'Diagnostics'"], 'only one native Settings tab in WheelHeat');
+assert.match(ambient, /ctx\.onTouch\(\(phase, x, y\)/, 'Ambient continuous sliders');
+assert.match(ambient, /phase === 2/, 'Ambient slider must accept move events');
+assert.match(ambient, /actionNotice = ctl\.info/, 'Ambient displays apply result');
+assert(!wheel.includes('simTempEnabled'), 'no simulated temperature in live automation');
+assert(!spec('g21_wheelheat').settings.some(s => /^(simTemp|ledAction|manualSeconds)/.test(s.key)));
+assert.equal(spec('g21_wheelheat').mguAppStartType, 'manually');
+assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'liveControl').default, false);
+assert(!spec('g21_wheelheat').settings.some(s => s.key === 'engineeringWrites'),
+    'legacy manual-write opt-in must not enable new automation');
+assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').default, false);
+assert.match(wheel, /ctl\.autoWrite\(data/, 'guarded live BDC command path present');
+assert.match(wheel, /ctl\.parked/, 'standstill guard present');
+
+// The pure planner emits one ON event followed by one OFF event.
+const { ComfortAuto } = require(path.join(root, 'apps/g21_wheelheat/comfort_auto'));
+const cfg = { autoEnabled: true, belowTemp: 8, coldDwell: 0, wheelAuto: true,
+    wheelMins: 1, seatDriver: false, seatPassenger: false, seatLevel: 3, seatMins: 1 };
+const auto = new ComfortAuto();
+const start = 100000;
+assert.equal(auto.step({ now: start, tempC: -5, tempAt: start, cfg })[0].type, 'ON');
+assert.equal(auto.step({ now: start + 60000, tempC: -5, tempAt: start, cfg })[0].type, 'OFF');
+assert.equal(auto.step({ now: start + 61000, tempC: -5, tempAt: start, cfg }).length, 0);
+console.log('OK: DPF tabs, Ambient drag/feedback, WheelHeat live gates and one-shot timer');

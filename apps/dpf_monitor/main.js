@@ -104,6 +104,11 @@ mgu.run({
             if (sub.error) log.warn('DPF CBS unavailable: ' + sub.error);
         }).catch((err) => log.warn('DPF CBS subscription: ' + err));
         ui.onClick('BTN_PAGE', () => { page = (page + 1) % 3; });
+        // Header tabs are drawn by G.frame. The renderer only routes their taps
+        // when an onTab handler exists; without it they look active but do nothing.
+        if (typeof ctx.onTab === 'function') ctx.onTab((index) => {
+            if (Number.isInteger(index) && index >= 0 && index < 3) page = index;
+        });
 
         function card(cv, x, y, w, h, colour) {
             cv.roundRect(x, y, w, h, 17, colour || C.card);

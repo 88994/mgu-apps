@@ -414,6 +414,12 @@ class Display {
             // the header's tabs (Settings among them) work over a sheet too
             const tab = !bar && (this.tabs || []).find(inside);
             const tgt = !bar && !tab && !this.sheet ? (this.pageTargets || []).find(inside) : null;
+            // Pass the entire touch sequence to custom continuous controls, such as
+            // colour/brightness sliders. Tabs, the button bar and settings sheets
+            // must retain their own touch behaviour.
+            if (this.onTouch && !bar && !tab && !this.sheet && !tgt) {
+                try { this.onTouch(phase, x, y); } catch (e) { this.log.error('touch', e); }
+            }
             const key = bar ? 'bar:' + bar.id : tab ? 'tab:' + tab.i : tgt ? 'tgt:' + tgt.key : this.sheet ? 'sheet:' + (this.sheetTargets || []).findIndex(inside) : null;
             if (phase === 3 && this.dragging && !this.sheet) { this.dragging = false; this.ownDown = null; return; }
             if (phase === 3 && !this.dragging && key && key === this.ownDown && (tab || tgt)) {

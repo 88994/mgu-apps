@@ -5,7 +5,8 @@ const G = require('./kit/gauges');
 const A = require('./logic');
 const { SafeDiag, bytes } = require('./safe_diag');
 
-const TABS = ['Color', 'Settings', 'Diagnostics'];
+// The renderer itself adds the single native Settings tab via BTN_SETTINGS.
+const TABS = ['Color', 'Diagnostics'];
 const PICKER = { x: 56, y: 130, w: 632, h: 140, cols: 24, rows: 11 };
 const RGB_SLIDERS = [
     { key: 'customRed', label: 'R', y: 285 },
@@ -14,13 +15,6 @@ const RGB_SLIDERS = [
 ];
 const BRIGHTNESS_Y = 419;
 const SLIDER_X = 145, SLIDER_W = 490;
-const SETTINGS = [
-    ['colorMode', 'Color mode'], ['presetColor', 'Preset color'],
-    ['customHue', 'Hue'], ['customSat', 'Saturation'],
-    ['applyTarget', 'Apply mode'], ['brightness', 'Brightness'],
-    ['customRed', 'RGB red'], ['customGreen', 'RGB green'], ['customBlue', 'RGB blue'],
-    ['linId', 'LIN module'], ['duration', 'Duration'],
-];
 const text = (cv, s, x, y, size, color, options) => cv.text(String(s), x, y, size, color, options || {});
 const rgbHex = rgb => rgb.map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase();
 
@@ -65,7 +59,8 @@ function drawBrightnessSlider(cv, t, value) {
 mgu.run({
     async start(ctx) {
         const ctl = new SafeDiag(ctx, A.ECU, A.DID);
-        let tab = 0, selectedRow = 0, rgbChannel = 0;
+        let tab = 0, rgbChannel = 0;
+        let touchedSlider = null;
         let actionNotice = 'No action requested.';
         let plan = null;
         // Settings from 0.3.0 may still contain the removed local lilac mode.
@@ -109,16 +104,6 @@ mgu.run({
             rgb[rgbChannel] = Math.max(0, Math.min(254, rgb[rgbChannel] + delta));
             updateRGB(rgb);
         };
-        const changeSetting = () => {
-            const key = SETTINGS[selectedRow][0];
-            ctx.settings.cycle(key);
-            if (key === 'customHue' || key === 'customSat') updateFromGrid();
-            else if (key === 'presetColor' || key === 'colorMode') {
-                if (mode() === 'preset') syncPreset();
-            }
-            else if (RGB_SLIDERS.some(s => s.key === key))
-                updateRGB(RGB_SLIDERS.map(s => Number(ctx.settings.get(s.key))));
-        };
         const setBrightness = value => ctx.settings.set('brightness',
             Math.max(0, Math.min(100, Math.round(value))));
         const nextBrightnessPreset = () => {
@@ -134,39 +119,46 @@ mgu.run({
             plan = { kind: 'restore', result: A.slot11RestorePlan() };
             actionNotice = 'FACTORY PLAN: 05 00 / 78 3C FE. NOT CODED.';
         };
-        const applyChoice = () => {
+        const applyChoice = async () => {
             if (ctx.settings.get('applyTarget') === 'slot11') {
                 prepareSlot11();
                 return;
             }
             plan = null;
+            if (ctx.settings.get('engineeringWrites') !== true) {
+                actionNotice = 'Live LIN locked: enable it in Settings.';
+                return;
+            }
+            if (!ctl.online) {
+                actionNotice = 'No connection to RAM / TASU. No command sent.';
+                return;
+            }
             if (!ctl.verified) {
-                actionNotice = 'TEMPORARY: Reading ECU status (22 E311).';
-                ctl.read(A.DID);
+                actionNotice = 'Reading ECU (22 E311). Press Apply again after OK.';
+                await ctl.read(A.DID);
+                actionNotice = ctl.verified ? 'ECU read OK. Press Apply again to confirm.' : ctl.info;
             } else {
-                actionNotice = 'TEMPORARY: Safety checks / confirm twice.';
-                ctl.write(raw(), 'RAM-LIN RGB #' + rgbHex(selected().rgb));
+                actionNotice = 'Requesting temporary color...';
+                await ctl.write(raw(), 'RAM-LIN RGB #' + rgbHex(selected().rgb));
+                actionNotice = ctl.info;
             }
         };
         ctx.ui.onClick('BTN_PAGE', () => setTab((tab + 1) % TABS.length));
         ctx.ui.onClick('BTN_MODE', () => {
-            if (tab === 1) selectedRow = (selectedRow + 1) % SETTINGS.length;
-            else if (tab === 0) {
+            if (tab === 0) {
                 ctx.settings.cycle('colorMode');
                 if (mode() === 'preset') syncPreset();
             } else setTab((tab + 1) % TABS.length);
         });
         ctx.ui.onClick('BTN_COLOR', () => {
-            if (tab === 1) selectedRow = (selectedRow + 1) % SETTINGS.length;
-            else if (tab === 0) {
+            if (tab === 0) {
                 ctx.settings.cycle(mode() === 'custom' ? 'customHue' : 'presetColor');
                 if (mode() === 'custom') updateFromGrid();
                 else syncPreset();
             }
         });
         ctx.ui.onClick('BTN_SAT', () => {
-            if (tab === 1) changeSetting();
-            else if (tab === 0) {
+            if (tab === 0) {
                 ctx.settings.cycle('customSat');
                 updateFromGrid();
             }
@@ -176,13 +168,11 @@ mgu.run({
         ctx.ui.onClick('BTN_RGB_UP', () => { if (tab === 0) adjustRGB(1); });
         ctx.ui.onClick('BTN_TARGET', () => cycleTarget());
         ctx.ui.onClick('BTN_RESTORE', () => prepareOriginal());
-        ctx.ui.onClick('BTN_BRIGHT', () => tab === 1 ? changeSetting()
-            : tab === 0 ? nextBrightnessPreset() : null);
+        ctx.ui.onClick('BTN_BRIGHT', () => { if (tab === 0) nextBrightnessPreset(); });
         ctx.ui.onClick('BTN_BRIGHT_DOWN', () => { if (tab === 0) setBrightness(Number(ctx.settings.get('brightness')) - 1); });
         ctx.ui.onClick('BTN_BRIGHT_UP', () => { if (tab === 0) setBrightness(Number(ctx.settings.get('brightness')) + 1); });
         ctx.ui.onClick('BTN_ACTION', () => {
-            if (tab === 0) { applyChoice(); return; }
-            if (tab === 1) { changeSetting(); return; }
+            if (tab === 0) { applyChoice().catch(e => { actionNotice = 'Apply error: ' + e.message; }); return; }
             // Diagnostics only: first press reads. Manual writes remain behind SafeDiag gates.
             if (!ctl.verified) ctl.read(A.DID);
             else {
@@ -191,6 +181,37 @@ mgu.run({
             }
         });
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
+        const moveSlider = (kind, x, y) => {
+            if (kind === 'picker') {
+                const px = Math.max(PICKER.x, Math.min(PICKER.x + PICKER.w - 1, x));
+                const py = Math.max(PICKER.y, Math.min(PICKER.y + PICKER.h - 1, y));
+                const cell = A.pickerCell(px, py, PICKER.x, PICKER.y, PICKER.w, PICKER.h);
+                if (cell) updateRGB(A.hsvToRgb(cell.hue, cell.saturation));
+            } else if (kind === 'brightness') {
+                setBrightness((x - SLIDER_X) * 100 / SLIDER_W);
+            } else if (kind >= 0 && kind < RGB_SLIDERS.length) {
+                rgbChannel = kind;
+                const rgb = RGB_SLIDERS.map(s => Number(ctx.settings.get(s.key)));
+                rgb[kind] = Math.max(0, Math.min(254, Math.round((x - SLIDER_X) * 254 / SLIDER_W)));
+                updateRGB(rgb);
+            }
+        };
+        if (typeof ctx.onTouch === 'function') ctx.onTouch((phase, x, y) => {
+            if (tab !== 0) { touchedSlider = null; return; }
+            if (phase === 1) {
+                touchedSlider = null;
+                if (x >= PICKER.x && x <= PICKER.x + PICKER.w && y >= PICKER.y && y <= PICKER.y + PICKER.h)
+                    touchedSlider = 'picker';
+                else if (x >= SLIDER_X - 12 && x <= SLIDER_X + SLIDER_W + 12) {
+                    touchedSlider = RGB_SLIDERS.findIndex(s => y >= s.y - 12 && y <= s.y + 32);
+                    if (touchedSlider < 0 && y >= BRIGHTNESS_Y - 12 && y <= BRIGHTNESS_Y + 32)
+                        touchedSlider = 'brightness';
+                }
+            }
+            if (touchedSlider !== null && touchedSlider !== -1 && (phase === 1 || phase === 2 || phase === 3))
+                moveSlider(touchedSlider, x, y);
+            if (phase === 3) touchedSlider = null;
+        });
         if (typeof ctx.onTap === 'function') ctx.onTap((x, y) => {
             if (tab === 0) {
                 const hit = A.pickerCell(x, y, PICKER.x, PICKER.y, PICKER.w, PICKER.h);
@@ -221,10 +242,6 @@ mgu.run({
                     applyChoice();
                 else if (y >= 414 && y < 459 && x >= 778 && x < 1110)
                     prepareOriginal();
-            } else if (tab === 1 && x >= 50 && x < 1510 && y >= 120 && y < 467) {
-                const col = x < 800 ? 0 : 1, line = Math.floor((y - 120) / 58);
-                const index = col * 6 + line;
-                if (index < SETTINGS.length) selectedRow = index;
             }
         });
         ctx.settings.onChange(() => {
@@ -281,25 +298,11 @@ mgu.run({
                 choice(1245, 292, 'Apply', false);
                 cv.fillRect(778, 416, 332, 40, '#1d2632');
                 text(cv, 'Prepare factory restore', 793, 445, 20, t.text);
-                text(cv, actionNotice.slice(0, 47), 1125, 443, 17, t.warn);
+                text(cv, actionNotice.slice(0, 72), 785, 466, 18, t.warn);
                 text(cv, target === 'slot11'
                     ? 'Slot 11: matching colors. FDL coding still unavailable.'
-                    : 'LIN 0xE311 requires explicit approval and vehicle standstill.',
-                    785, 483, 18, t.dim);
-            } else if (tab === 1) {
-                G.panel(cv, t, 24, 62, 760, 445, 'Color / Apply mode');
-                G.panel(cv, t, 805, 62, 771, 445, 'RGB / LIN parameters');
-                SETTINGS.forEach(([key, label], index) => {
-                    const col = index < 6 ? 0 : 1, line = col ? index - 6 : index;
-                    const x = col ? 832 : 50, y = 154 + 57 * line;
-                    const value = ctx.settings.display ? ctx.settings.display(key) : ctx.settings.get(key);
-                    if (index === selectedRow) cv.fillRect(x - 5, y - 29, col ? 715 : 706, 48, '#203448');
-                    text(cv, (index === selectedRow ? '> ' : '  ') + label, x, y, 21,
-                        index === selectedRow ? t.accent : t.text);
-                    text(cv, String(value), x + 328, y, 20, t.text);
-                });
-                text(cv, 'Select: Mode / Color   |   Change: Saturation', 50, 489, 19, t.dim);
-                text(cv, 'More options: All settings', 832, 489, 19, t.dim);
+                    : 'Temporary output requires ECU read, consent and standstill.',
+                    785, 497, 18, t.dim);
             } else {
                 G.panel(cv, t, 24, 62, 761, 445, 'RAM01 / Diagnostics');
                 text(cv, 'Control unit   RAM  |  Address 0x37', 56, 142, 26, t.text);

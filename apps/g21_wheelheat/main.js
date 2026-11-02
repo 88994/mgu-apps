@@ -6,27 +6,26 @@ const B = require('./logic');
 const { ComfortAuto } = require('./comfort_auto');
 const { SafeDiag, bytes } = require('./safe_diag');
 
-const TABS = ['Comfort', 'Settings', 'Diagnostics'];
-const SETTINGS = [
-    ['autoEnabled', 'Comfort preview'], ['simTempEnabled', 'Simulate temperature'],
-    ['simTempC', 'Simulated temperature'], ['belowTemp', 'Start below'],
-    ['coldDwell', 'Stable for'], ['wheelAuto', 'Auto wheel heating'],
-    ['wheelMins', 'Wheel heat duration'], ['seatDriver', 'Auto driver seat'],
-    ['seatPassenger', 'Auto passenger seat'], ['seatLevel', 'Seat heat level'],
-    ['seatMins', 'Seat heat duration'], ['manualSeconds', 'Manual test duration'],
-];
-const text = (cv, s, x, y, size, color, opts) => cv.text(String(s), x, y, size, color, opts || {});
+// Settings is automatically provided as ONE native tab by the renderer.
+const TABS = ['Comfort', 'Diagnostics'];
+const text = (cv, s, x, y, size, color, opts) =>
+    cv.text(String(s), x, y, size, color, opts || {});
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 mgu.run({
     async start(ctx) {
-        ctx.log.info('[WHEELHEAT] process started; automatic heating remains PREVIEW ONLY');
+        ctx.log.info('[WHEELHEAT] live-capable build; all ECU writes require explicit Settings opt-in');
         const ctl = new SafeDiag(ctx, B.ECU, B.DID_HEAT);
         const auto = new ComfortAuto();
         const outside = { value: null, at: 0 };
-        let tab = 0, selectedRow = 0, autoBytes = 'No preview events yet';
+        const acknowledged = new Set();
+        let tab = 0, busy = false, lastAction = 'No heating command has been sent.';
         const setTab = i => { if (Number.isInteger(i) && i >= 0 && i < TABS.length) tab = i; };
+
+        // Use only a real, fresh MGU outdoor temperature. No test/simulated
+        // values can reach the automatic ECU actuator.
         ctx.signals.watch('de.bmw.infrastructure.EnvironmentalInformation', '1', {
-            ExteriorTemperature: (v) => {
+            ExteriorTemperature: v => {
                 const temp = B.exteriorTemp(v && v.temperatureExterior);
                 if (temp !== null && temp >= -40 && temp <= 60) {
                     outside.value = temp;
@@ -34,10 +33,11 @@ mgu.run({
                 }
             },
         }, ctx.log).catch(e => ctx.log.warn('Outdoor temperature: ' + e));
-        const autoConfig = () => ({
+
+        const config = () => ({
             autoEnabled: ctx.settings.get('autoEnabled') === true,
             belowTemp: Number(ctx.settings.get('belowTemp')),
-            coldDwell: Number(ctx.settings.get('coldDwell')),
+            coldDwell: 15,
             wheelAuto: ctx.settings.get('wheelAuto') === true,
             wheelMins: Number(ctx.settings.get('wheelMins')),
             seatDriver: ctx.settings.get('seatDriver') === true,
@@ -45,127 +45,141 @@ mgu.run({
             seatLevel: Number(ctx.settings.get('seatLevel')),
             seatMins: Number(ctx.settings.get('seatMins')),
         });
-        const selectedOutside = (now) => B.temperatureInput(outside.value, outside.at,
-            ctx.settings.get('simTempEnabled') === true, ctx.settings.get('simTempC'), now);
-        const seconds = () => Number(ctx.settings.get('manualSeconds'));
-        function autoStep() {
-            try {
-                const now = Date.now(), current = selectedOutside(now);
-                const intents = auto.step({ now, tempC: current.value, tempAt: current.at, cfg: autoConfig() });
-                for (const intent of intents) {
-                    // No automatic ECU 2E writes; this is a deterministic offline preview.
-                    const d = intent.device === 'Steering wheel' ? B.heating(intent.data.seconds)
-                        : B.seat(intent.data.side, intent.data.level,
-                            intent.type === 'OFF' ? 0 : autoConfig().seatMins * 60);
-                    autoBytes = intent.type + ' ' + intent.device + ': 2E ' + bytes(d);
-                    ctx.log.info('[AUTO PREVIEW ONLY] ' + autoBytes);
-                }
-            } catch (e) { autoBytes = 'Invalid automation settings: ' + e.message; }
-        }
-        setInterval(autoStep, 1000); // The process must stay alive for background planning.
-        autoStep();
+        // Use a NEW setting key. Old experimental manual-write permissions
+        // must never silently enable automatic heating after an upgrade.
+        const permitted = () => ctx.settings.get('liveControl') === true;
+        const tempReading = now => B.temperatureInput(outside.value, outside.at, false, null, now);
 
-        const changeSetting = () => ctx.settings.cycle(SETTINGS[selectedRow][0]);
+        // A planner event is not a live heater state. Report an actual request
+        // only if the BDC positively acknowledged it. The vehicle's physical
+        // response remains unverified until an on-car test.
+        async function sendIntent(intent, cfg) {
+            if (intent.type === 'OFF' && !acknowledged.has(intent.device)) return;
+            if (!permitted() || !ctl.online || !ctl.parked) {
+                lastAction = intent.device + ': NOT sent (permission / BDC / stationary check).';
+                ctx.log.warn('[AUTO BLOCKED] ' + lastAction);
+                return;
+            }
+            const data = intent.device === 'Steering wheel'
+                ? B.heating(intent.data.seconds)
+                : B.seat(intent.data.side, intent.data.level,
+                    intent.type === 'OFF' ? 0 : cfg.seatMins * 60);
+
+            // BDC is polled before every 2E write. Commands are serialized with
+            // >=3s between writes. Driving away or losing vehicle speed blocks it.
+            const remaining = 3000 - (Date.now() - ctl.lastWriteAt);
+            if (remaining > 0) await wait(remaining);
+            if (!permitted() || !ctl.parked || !ctl.online) {
+                lastAction = intent.device + ': NOT sent (conditions changed).';
+                return;
+            }
+            if (!ctl.verified) await ctl.read(B.DID_HEAT);
+            if (!ctl.verified || !ctl.parked || !permitted()) {
+                lastAction = intent.device + ': NOT sent (' + ctl.info + ').';
+                return;
+            }
+            const ok = await ctl.autoWrite(data, intent.device + ' ' + intent.type);
+            lastAction = (ok ? 'BDC ACK' : 'NOT CONFIRMED') + ': ' + intent.device + ' ' +
+                intent.type + ' (2E ' + bytes(data) + ')';
+            ctx.log.info('[AUTO LIVE] ' + lastAction);
+            if (ok && intent.type === 'ON') acknowledged.add(intent.device);
+            if (ok && intent.type === 'OFF') acknowledged.delete(intent.device);
+        }
+
+        async function autoStep() {
+            if (busy) return;
+            busy = true;
+            try {
+                const now = Date.now(), cfg = config(), reading = tempReading(now);
+                const canStart = cfg.autoEnabled && permitted() && ctl.online && ctl.parked;
+                // Continue an acknowledged session's timer when the car moves;
+                // no new commands are sent while speed cannot be confirmed zero.
+                const enabledForPlanner = cfg.autoEnabled && (canStart || auto.active.size > 0);
+                const intents = auto.step({ now, tempC: reading.value, tempAt: reading.at,
+                    cfg: Object.assign({}, cfg, { autoEnabled: enabledForPlanner }) });
+                for (const intent of intents) await sendIntent(intent, cfg);
+            } catch (e) {
+                lastAction = 'Automatic heating error: ' + (e.message || String(e));
+                ctx.log.warn(lastAction);
+            } finally { busy = false; }
+        }
+        setInterval(() => { autoStep().catch(e => ctx.log.error(e)); }, 1000);
+        autoStep().catch(e => ctx.log.error(e));
+
         ctx.ui.onClick('BTN_PAGE', () => setTab((tab + 1) % TABS.length));
-        ctx.ui.onClick('BTN_SELECT', () => tab === 1 ? selectedRow = (selectedRow + 1) % SETTINGS.length
-            : tab === 0 ? ctx.settings.cycle('manualSeconds') : setTab(1));
-        ctx.ui.onClick('BTN_ADJUST', () => tab === 1 ? changeSetting()
-            : tab === 0 ? ctx.settings.cycle('manualSeconds') : ctx.settings.cycle('ledAction'));
         ctx.ui.onClick('BTN_ACTION', () => {
-            if (tab === 1) { changeSetting(); return; }
-            if (tab === 0) { setTab(2); return; }
-            if (!ctl.verified) ctl.read(B.DID_HEAT);
-            else ctl.write(B.heating(seconds()), seconds() ? 'Heating ' + seconds() + 's' : 'Heating OFF');
-        });
-        ctx.ui.onClick('BTN_LED', () => {
-            if (tab !== 2) return; // no accidental LED command from the overview
-            if (!ctl.verified) { ctl.info = 'Read BDC status before the LED test'; return; }
-            const action = Number(ctx.settings.get('ledAction'));
-            ctl.write(B.led(action), action ? 'LED ON for 1s' : 'LED OFF');
+            if (tab === 0) setTab(1);
+            else ctl.read(B.DID_HEAT).catch(e => { ctl.info = 'Read error: ' + e.message; });
         });
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
-        if (typeof ctx.onTap === 'function') ctx.onTap((x, y) => {
-            if (tab !== 1 || x < 54 || x > 1535 || y < 105 || y >= 465) return;
-            const col = x < 800 ? 0 : 1, line = Math.floor((y - 105) / 58);
-            const index = col * 6 + line;
-            if (index < SETTINGS.length) selectedRow = index;
-        });
-        ctx.settings.onChange(() => ctl.cancel());
-        ctl.init().catch(e => { ctl.info = 'TASU initialization: ' + e; });
+        ctl.init().catch(e => { ctl.info = 'TASU unavailable: ' + e; });
 
-        ctx.loop('MAIN', 8, () => {
+        ctx.loop('MAIN', 5, () => {
             const t = ctx.theme(), cv = ctx.canvas(1600, 520).clear(t.bg);
-            const now = Date.now(), selected = selectedOutside(now), c = autoConfig();
-            const sensorFresh = selected.value !== null && now - selected.at <= 120000;
-            const tempLabel = sensorFresh ? selected.value.toFixed(1) + ' C' : 'no valid reading';
-            const sourceLabel = selected.source === 'SIMULATION' ? 'TEST' : 'MGU';
-            const autoState = !c.autoEnabled ? 'PREVIEW DISABLED'
-                : auto.active.size ? 'PREVIEW RUNNING'
-                    : auto.fired ? 'PREVIEW CYCLE FINISHED' : 'WAITING FOR TEMPERATURE';
-            G.frame(cv, t, TABS, tab, [{ text: c.autoEnabled ? 'AUTO PREVIEW' : 'AUTO OFF', color: t.dim }]);
-
+            const now = Date.now(), c = config(), r = tempReading(now);
+            const fresh = r.value !== null && now - r.at <= 120000;
+            const temp = fresh ? r.value.toFixed(1) + ' °C' : 'unavailable';
+            const startReady = c.autoEnabled && permitted() && ctl.online && ctl.parked && fresh;
+            const status = !c.autoEnabled ? 'AUTOMATION OFF'
+                : !permitted() ? 'LIVE CONTROL NOT ENABLED'
+                    : !fresh ? 'WAITING FOR REAL TEMPERATURE'
+                        : !ctl.online ? 'BDC CONNECTION UNAVAILABLE'
+                            : !ctl.parked ? 'WAITING FOR CONFIRMED STANDSTILL'
+                                : auto.active.size ? 'HEATING CYCLE REQUESTED'
+                                    : auto.fired ? 'CYCLE FINISHED' : 'READY / WAITING FOR COLD';
+            G.frame(cv, t, TABS, tab,
+                [{ text: startReady ? 'AUTO READY' : 'AUTO NOT READY', color: t.dim }]);
             if (tab === 0) {
-                G.panel(cv, t, 24, 62, 740, 445, 'Comfort automation / Preview');
-                text(cv, autoState, 55, 155, 36, auto.active.size ? t.warn : t.accent, { font: 'bold' });
-                text(cv, sourceLabel + ': ' + tempLabel + '     Threshold ' + c.belowTemp + ' C', 55, 217, 27, t.text);
-                text(cv, 'Temperature stable for: ' + c.coldDwell + ' seconds', 55, 267, 23, t.dim);
-                text(cv, 'Remaining time (simulation only):', 55, 328, 24, t.text);
-                text(cv, 'Steering wheel    ' + auto.remaining('Steering wheel', now) + ' s', 67, 373, 25, t.text);
-                text(cv, 'Driver seat          ' + auto.remaining('Driver seat', now) + ' s', 67, 410, 25, t.text);
-                text(cv, 'Passenger seat    ' + auto.remaining('Passenger seat', now) + ' s', 67, 447, 25, t.text);
-                text(cv, 'Automation preview NEVER sends ECU commands.', 55, 483, 19, t.warn);
+                G.panel(cv, t, 24, 62, 743, 445, 'Automatic heating');
+                text(cv, status, 54, 148, 32, auto.active.size ? t.warn : t.accent, { font: 'bold' });
+                text(cv, 'Outdoor ' + temp + '    Start at or below ' + c.belowTemp + ' °C',
+                    54, 205, 27, t.text);
+                cv.fillRect(54, 226, 667, 2, '#2e4052');
+                text(cv, 'Steering wheel', 54, 273, 27, t.text);
+                text(cv, c.wheelAuto ? c.wheelMins + ' min' : 'Off', 693, 273, 26,
+                    c.wheelAuto ? t.accent : t.dim, { align: 'right' });
+                text(cv, 'Driver seat', 54, 319, 27, t.text);
+                text(cv, c.seatDriver ? 'Level ' + c.seatLevel + ' / ' + c.seatMins + ' min' : 'Off',
+                    693, 319, 25, c.seatDriver ? t.accent : t.dim, { align: 'right' });
+                text(cv, 'Passenger seat', 54, 365, 27, t.text);
+                text(cv, c.seatPassenger ? 'Level ' + c.seatLevel + ' / ' + c.seatMins + ' min' : 'Off',
+                    693, 365, 25, c.seatPassenger ? t.accent : t.dim, { align: 'right' });
+                text(cv, 'One automatic cycle per app start', 54, 422, 23, t.dim);
+                text(cv, 'Settings: on/off, temperature, duration, seats', 54, 476, 20, t.dim);
 
-                G.panel(cv, t, 785, 62, 791, 445, 'Manual test / Setup');
-                text(cv, 'COMMAND SELECTION - NOT LIVE HEATER STATUS', 819, 143, 25, t.warn);
-                text(cv, 'Selected manual action', 819, 205, 24, t.dim);
-                text(cv, seconds() ? 'Heat for ' + seconds() + ' seconds' : 'Turn heating OFF',
-                    819, 272, 39, t.accent, { font: 'bold' });
-                text(cv, 'This value does not indicate heating is active.', 819, 317, 22, t.text);
-                cv.fillRect(819, 339, 715, 2, '#2e4052');
-                text(cv, 'Change duration: Select / Change value', 819, 380, 23, t.text);
-                text(cv, 'Read status and test: Diagnostics tab', 819, 424, 23, t.text);
-                text(cv, ctx.settings.get('engineeringWrites') === true
-                    ? 'ECU writes: enabled, safety checks still required'
-                    : 'ECU writes: DISABLED in Settings', 819, 479, 21, t.warn);
-            } else if (tab === 1) {
-                G.panel(cv, t, 24, 62, 760, 445, 'Temperature / Automation');
-                G.panel(cv, t, 805, 62, 771, 445, 'Heating / Durations');
-                SETTINGS.forEach(([key, label], index) => {
-                    const col = index < 6 ? 0 : 1, line = col ? index - 6 : index;
-                    const x = col ? 830 : 50, y = 145 + line * 57;
-                    const value = ctx.settings.display ? ctx.settings.display(key)
-                        : typeof ctx.settings.get(key) === 'boolean'
-                            ? (ctx.settings.get(key) ? 'On' : 'Off') : String(ctx.settings.get(key));
-                    if (selectedRow === index) cv.fillRect(x - 7, y - 27, 702, 47, '#203448');
-                    text(cv, (index === selectedRow ? '> ' : '  ') + label, x, y, 22,
-                        index === selectedRow ? t.accent : t.text);
-                    text(cv, String(value), x + 375, y, 23, t.text);
-                });
-                text(cv, 'Select: next row   |   Adjust: change value', 50, 487, 18, t.dim);
-                text(cv, 'All settings: indicator LED / write approval', 831, 487, 18, t.warn);
+                G.panel(cv, t, 788, 62, 788, 445, 'Connection & operation');
+                text(cv, 'BDC  ' + (ctl.online ? 'CONNECTED' : 'UNAVAILABLE'), 820, 149, 29,
+                    ctl.online ? t.accent : t.warn, { font: 'bold' });
+                text(cv, 'Standstill  ' + (ctl.parked ? 'confirmed' : 'not confirmed'), 820, 198, 24, t.text);
+                text(cv, 'Live writes  ' + (permitted() ? 'enabled' : 'disabled'), 820, 247, 24, t.text);
+                text(cv, 'Steering wheel remaining: ' + auto.remaining('Steering wheel', now) + ' s',
+                    820, 308, 23, t.text);
+                text(cv, 'Seat remaining: ' + Math.max(auto.remaining('Driver seat', now),
+                    auto.remaining('Passenger seat', now)) + ' s', 820, 349, 23, t.text);
+                cv.fillRect(820, 373, 710, 1, '#2e4052');
+                text(cv, 'Last ECU action:', 820, 408, 21, t.dim);
+                text(cv, lastAction.slice(0, 64), 820, 443, 20, t.warn);
+                text(cv, 'Command ACK is not confirmation of physical heating.',
+                    820, 483, 18, t.dim);
             } else {
-                G.panel(cv, t, 24, 62, 762, 445, 'BDC / Diagnostic commands');
-                text(cv, 'MANUAL  2E ' + bytes(B.heating(seconds())) + '  (' + seconds() + 's)',
-                    55, 139, 29, t.accent, { font: 'num' });
-                text(cv, 'AUTO WHEEL  ' + (c.wheelAuto ? '2E ' + bytes(B.heating(c.wheelMins * 60)) +
-                    '  (' + c.wheelMins + 'min)' : 'OFF'), 55, 194, 25, t.text);
-                text(cv, 'AUTO DRIVER  ' + (c.seatDriver ? '2E ' + bytes(B.seat('driver', c.seatLevel, c.seatMins * 60)) : 'OFF'),
-                    55, 247, 24, t.text);
-                text(cv, 'AUTO PASSENGER  ' + (c.seatPassenger
-                    ? '2E ' + bytes(B.seat('passenger', c.seatLevel, c.seatMins * 60)) : 'OFF'),
-                    55, 298, 24, t.text);
-                text(cv, 'WHEEL LED   2E ' + bytes(B.led(Number(ctx.settings.get('ledAction')))), 55, 351, 23, t.dim);
-                text(cv, 'LED controls the indicator, not heat output', 55, 399, 22, t.dim);
-                text(cv, 'Only the manual diagnostic can request a 2E write.', 55, 467, 22, t.warn);
-
-                G.panel(cv, t, 806, 62, 770, 445, 'Connection / Safety approval');
-                text(cv, 'ECU: ' + (ctl.online ? 'TASU ready' : 'offline'), 835, 140, 27, t.text);
-                text(cv, 'Speed: ' + (ctl.speed === null ? 'not available' : ctl.speed.toFixed(1) + ' km/h'), 835, 192, 23, t.text);
-                text(cv, 'Status (22 D074): ' + ctl.readText.slice(0, 40), 835, 250, 21, t.dim);
-                text(cv, 'Manual write: ' + (ctl.writeReady || 'not approved').slice(0, 40), 835, 304, 22, t.warn);
-                text(cv, ctl.info.slice(0, 58), 835, 365, 21, t.text);
-                text(cv, autoBytes.slice(0, 57), 835, 423, 21, t.accent);
-                text(cv, 'AUTO = preview only; never sends 2E', 835, 474, 20, t.dim);
+                G.panel(cv, t, 24, 62, 762, 445, 'BDC status (read-only)');
+                text(cv, 'ECU address 0x40', 54, 142, 28, t.text);
+                text(cv, 'Steering wheel DID 0xD074', 54, 192, 27, t.text);
+                text(cv, 'Read status: press Diagnostics / Action', 54, 252, 24, t.accent);
+                text(cv, 'Response: ' + ctl.readText.slice(0, 45), 54, 317, 23, t.text);
+                text(cv, 'Current command preparation:', 54, 387, 22, t.dim);
+                text(cv, '2E ' + bytes(B.heating(c.wheelMins * 60)), 54, 437, 27, t.accent,
+                    { font: 'num' });
+                G.panel(cv, t, 805, 62, 771, 445, 'Safety & diagnostics');
+                text(cv, 'TASU: ' + (ctl.online ? 'available' : 'unavailable'), 835, 144, 26, t.text);
+                text(cv, 'Speed: ' + (ctl.parked ? '0 km/h verified' : 'unknown / moving'),
+                    835, 194, 25, t.text);
+                text(cv, 'Write permission: ' + (permitted() ? 'YES' : 'NO'),
+                    835, 246, 25, t.text);
+                text(cv, 'Last action:', 835, 321, 23, t.dim);
+                text(cv, lastAction.slice(0, 52), 835, 358, 22, t.warn);
+                text(cv, ctl.info.slice(0, 60), 835, 417, 22, t.text);
+                text(cv, 'All heating commands remain experimental.', 835, 476, 21, t.warn);
             }
             return ctx.ui.image('MAIN_GFX', cv);
         });
