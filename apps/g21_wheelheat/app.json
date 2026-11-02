@@ -28,7 +28,7 @@
                 ["BTN_SETTINGS", "Settings"]]
   }],
   "settings": [
-    {"key": "autoEnabled", "label": "Auto heating after MGU startup", "type": "bool", "default": false},
+    {"key": "autoEnabled", "label": "Auto heating after MGU startup", "type": "bool", "reset": "autostart-optin-0.4.4", "default": false},
     {"key": "liveControl", "label": "Permit live BDC commands (unverified)", "type": "bool", "default": false},
     {"key": "belowTemp", "label": "Start at or below", "type": "number", "unit": "°C", "default": 8,
       "steps": [-10, -5, 0, 2, 5, 8, 10, 12, 15, 18, 20]},

@@ -17,6 +17,13 @@ mgu.run({
         ctx.log.info('[WHEELHEAT] live-capable build; all ECU writes require explicit Settings opt-in');
         const ctl = new SafeDiag(ctx, B.ECU, B.DID_HEAT);
         const auto = new ComfortAuto();
+        // Prevent a crash/restart of the OAP process from immediately
+        // triggering another physical heating cycle in the same cold start.
+        const previousCycle = Number(ctx.settings.get('_autoCycleAt'));
+        if (Number.isFinite(previousCycle) && previousCycle > 0 &&
+            Date.now() >= previousCycle && Date.now() - previousCycle < 30 * 60000)
+            auto.fired = true;
+        let cycleSaved = false;
         const outside = { value: null, at: 0 };
         const acknowledged = new Set();
         let tab = 0, busy = false, statusBusy = false, statusAt = 0;
@@ -90,6 +97,10 @@ mgu.run({
             ctx.log.info('[AUTO LIVE] ' + lastAction);
             if (ok && (intent.type === 'ON' || intent.type === 'EXTEND')) acknowledged.add(intent.device);
             if (ok && intent.type === 'OFF') acknowledged.delete(intent.device);
+            if (ok && intent.type === 'ON' && !cycleSaved) {
+                cycleSaved = true;
+                ctx.settings.set('_autoCycleAt', Date.now());
+            }
             return ok;
         }
 
