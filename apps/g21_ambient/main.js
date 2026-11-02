@@ -61,6 +61,7 @@ mgu.run({
         const ctl = new SafeDiag(ctx, A.ECU, A.DID);
         let tab = 0, rgbChannel = 0;
         let touchedSlider = null;
+        let lastDragUpdate = 0;
         let actionNotice = 'No action requested.';
         let plan = null;
         // Settings from 0.3.0 may still contain the removed local lilac mode.
@@ -87,10 +88,15 @@ mgu.run({
         const syncRGB = (rgb, keepPreset = false) => {
             updateSafely(() => {
                 const grid = A.rgbToGrid(rgb);
-                RGB_SLIDERS.forEach((s, i) => ctx.settings.set(s.key, rgb[i]));
-                ctx.settings.set('customHue', grid.hue);
-                ctx.settings.set('customSat', grid.saturation);
-                if (!keepPreset) ctx.settings.set('colorMode', 'custom');
+                const change = {
+                    customRed: rgb[0], customGreen: rgb[1], customBlue: rgb[2],
+                    customHue: grid.hue, customSat: grid.saturation,
+                };
+                if (!keepPreset) change.colorMode = 'custom';
+                // One persistence operation per sampled drag position; previously
+                // each finger move caused six synchronous flash/file writes.
+                if (typeof ctx.settings.setMany === 'function') ctx.settings.setMany(change);
+                else Object.keys(change).forEach(k => ctx.settings.set(k, change[k]));
             });
         };
         const updateRGB = rgb => syncRGB(rgb);
@@ -104,8 +110,10 @@ mgu.run({
             rgb[rgbChannel] = Math.max(0, Math.min(254, rgb[rgbChannel] + delta));
             updateRGB(rgb);
         };
-        const setBrightness = value => ctx.settings.set('brightness',
-            Math.max(0, Math.min(100, Math.round(value))));
+        const setBrightness = value => {
+            const next = Math.max(0, Math.min(100, Math.round(value)));
+            if (next !== Number(ctx.settings.get('brightness'))) ctx.settings.set('brightness', next);
+        };
         const nextBrightnessPreset = () => {
             const current = Number(ctx.settings.get('brightness'));
             setBrightness(current >= 100 ? 0 : Math.floor(current / 10) * 10 + 10);
@@ -134,11 +142,11 @@ mgu.run({
                 return;
             }
             if (!ctl.verified) {
-                actionNotice = 'Reading ECU (22 E311). Press Apply again after OK.';
+                actionNotice = 'STEP 1/3: Reading ECU 22 E311 ...';
                 await ctl.read(A.DID);
-                actionNotice = ctl.verified ? 'ECU read OK. Press Apply again to confirm.' : ctl.info;
+                actionNotice = ctl.verified ? 'STEP 2/3: ECU read OK. Tap APPLY to arm.' : ctl.info;
             } else {
-                actionNotice = 'Requesting temporary color...';
+                actionNotice = ctl.pending ? 'STEP 3/3: Sending confirmed color ...' : 'STEP 2/3: Arming color command ...';
                 await ctl.write(raw(), 'RAM-LIN RGB #' + rgbHex(selected().rgb));
                 actionNotice = ctl.info;
             }
@@ -208,8 +216,15 @@ mgu.run({
                         touchedSlider = 'brightness';
                 }
             }
-            if (touchedSlider !== null && touchedSlider !== -1 && (phase === 1 || phase === 2 || phase === 3))
-                moveSlider(touchedSlider, x, y);
+            if (touchedSlider !== null && touchedSlider !== -1 && (phase === 1 || phase === 2 || phase === 3)) {
+                // Sample at <= 10 Hz, always commit final release position.
+                // Reading/settings writes on every raw touch-move overloads MGU.
+                const now = Date.now();
+                if (phase !== 2 || now - lastDragUpdate >= 100) {
+                    moveSlider(touchedSlider, x, y);
+                    lastDragUpdate = now;
+                }
+            }
             if (phase === 3) touchedSlider = null;
         });
         if (typeof ctx.onTap === 'function') ctx.onTap((x, y) => {
@@ -295,7 +310,9 @@ mgu.run({
                 };
                 choice(778, 217, 'Temporary', target === 'temporary');
                 choice(1001, 228, 'Menu slot 11', target === 'slot11');
-                choice(1245, 292, 'Apply', false);
+                const applyLabel = target === 'slot11' ? 'Prepare FDL plan' :
+                    !ctl.verified ? '1. Read ECU' : ctl.pending ? '3. Confirm' : '2. Arm color';
+                choice(1245, 292, applyLabel, false);
                 cv.fillRect(778, 416, 332, 40, '#1d2632');
                 text(cv, 'Prepare factory restore', 793, 445, 20, t.text);
                 text(cv, actionNotice.slice(0, 72), 785, 466, 18, t.warn);

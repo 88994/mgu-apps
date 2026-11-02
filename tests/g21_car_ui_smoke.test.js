@@ -24,13 +24,17 @@ assert.match(ambient, /phase === 2/, 'Ambient slider must accept move events');
 assert.match(ambient, /actionNotice = ctl\.info/, 'Ambient displays apply result');
 assert(!wheel.includes('simTempEnabled'), 'no simulated temperature in live automation');
 assert(!spec('g21_wheelheat').settings.some(s => /^(simTemp|ledAction|manualSeconds)/.test(s.key)));
-assert.equal(spec('g21_wheelheat').mguAppStartType, 'manually');
+assert.equal(spec('g21_wheelheat').mguAppStartType, 'autostart');
 assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'liveControl').default, false);
 assert(!spec('g21_wheelheat').settings.some(s => s.key === 'engineeringWrites'),
     'legacy manual-write opt-in must not enable new automation');
 assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').default, false);
 assert.match(wheel, /ctl\.autoWrite\(data/, 'guarded live BDC command path present');
 assert.match(wheel, /ctl\.parked/, 'standstill guard present');
+assert.match(wheel, /ctl\.readbacks\[did\]/, 'BDC diagnostics must use actual ECU readbacks');
+assert(!dpf.includes('Request (raw DID 44BB)'), 'unknown request not mislabelled as status');
+assert(!dpf.includes('cv.roundRect(70, 451, 1450, 6'), 'fake DPF progress bar removed');
+assert.match(ambient, /setMany\(change\)/, 'slider changes must batch persistence');
 
 // The pure planner emits one ON event followed by one OFF event.
 const { ComfortAuto } = require(path.join(root, 'apps/g21_wheelheat/comfort_auto'));
@@ -41,4 +45,21 @@ const start = 100000;
 assert.equal(auto.step({ now: start, tempC: -5, tempAt: start, cfg })[0].type, 'ON');
 assert.equal(auto.step({ now: start + 60000, tempC: -5, tempAt: start, cfg })[0].type, 'OFF');
 assert.equal(auto.step({ now: start + 61000, tempC: -5, tempAt: start, cfg }).length, 0);
+const long = new ComfortAuto();
+const longConfig = Object.assign({}, cfg, { wheelMins: 10 });
+const first = long.step({ now: start, tempC: -5, tempAt: start, cfg: longConfig })[0];
+assert.deepEqual([first.type, first.data.seconds], ['ON', 240]);
+long.acknowledge(first, true, start);
+const extend1 = long.step({ now: start + 228000, tempC: -5,
+    tempAt: start, cfg: longConfig })[0];
+assert.deepEqual([extend1.type, extend1.data.seconds], ['EXTEND', 240]);
+long.acknowledge(extend1, true, start + 228000);
+assert.equal(long.step({ now: start + 240000, tempC: -5,
+    tempAt: start, cfg: longConfig }).length, 0, 'no repeated extension after ACK');
+const extend2 = long.step({ now: start + 456000, tempC: -5,
+    tempAt: start, cfg: longConfig })[0];
+assert.deepEqual([extend2.type, extend2.data.seconds], ['EXTEND', 144]);
+long.acknowledge(extend2, true, start + 456000);
+assert.equal(long.step({ now: start + 600000, tempC: -5,
+    tempAt: start, cfg: longConfig })[0].type, 'OFF');
 console.log('OK: DPF tabs, Ambient drag/feedback, WheelHeat live gates and one-shot timer');

@@ -110,6 +110,17 @@ class Settings {
         try { fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1)); } catch (e) { log.warn('settings save: ' + e); }
         this.listeners.forEach((fn) => { try { fn(key, value); } catch (e) { log.error(e); } });
     }
+    /** Persist a whole interactive gesture in one file write and one UI update.
+     * Useful for RGB sliders that change several correlated settings at once.
+     */
+    setMany(changes) {
+        const entries = Object.entries(changes || {});
+        if (!entries.some(([key, value]) => this.values[key] !== value)) return;
+        for (const [key, value] of entries) this.values[key] = value;
+        try { fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1)); }
+        catch (e) { log.warn('settings save: ' + e); }
+        this.listeners.forEach((fn) => { try { fn(null, null); } catch (e) { log.error(e); } });
+    }
     onChange(fn) { this.listeners.push(fn); }
     item(key) { return this.schema.find((s) => s.key === key); }
     /** Human text for the current value of a setting. */

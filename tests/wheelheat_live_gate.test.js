@@ -31,6 +31,17 @@ async function run() {
     fresh();
     assert.equal(await ctl.autoWrite(data, 'Heating ON'), true, 'positive BDC reply');
     assert.equal(calls, 1);
+    // The read-back cache must be populated only from an actual 0x62 response,
+    // and must never silently reuse the last requested 0x2E value.
+    ctl.diag.physical = async (_target, service, request) => service === 0x22
+        ? [0x62, request[0], request[1], 0x01, 0x7F]
+        : [0x6E, request[0], request[1]];
+    assert.equal(await ctl.read(0xD074), true);
+    assert.deepEqual(ctl.readbacks[0xD074].payload, [0x01, 0x7F]);
+    assert.equal(ctl.readbacks[0xD074].ok, true);
+    ctl.diag.physical = async () => [0x7F, 0x22, 0x31];
+    assert.equal(await ctl.read(0xE432), false);
+    assert.match(ctl.readbacks[0xE432].error, /NRC/);
     assert.equal(await ctl.autoWrite(data, 'Heating ON'), false, 'fresh ECU read required');
     assert.equal(calls, 1);
     ctl.speed = 10;

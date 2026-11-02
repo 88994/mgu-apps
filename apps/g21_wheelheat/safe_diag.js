@@ -17,6 +17,7 @@ class SafeDiag {
         this.pending = null;
         this.busy = false;
         this.lastWriteAt = 0;
+        this.readbacks = Object.create(null); // actual 0x22 replies, NEVER app-command state
     }
     async init() {
         this.ctx.signals.watch('de.bmw.infotainment.vehicle.Vehicle2', '1', {
@@ -45,8 +46,8 @@ class SafeDiag {
     cancel() { this.pending = null; }
     async read(did) {
         this.cancel();
-        if (this.busy) { this.info = 'Diagnostics busy'; return; }
-        if (!this.online) { this.info = 'TASU unavailable (expected in emulator)'; return; }
+        if (this.busy) { this.info = 'Diagnostics busy'; return false; }
+        if (!this.online) { this.info = 'TASU unavailable (expected in emulator)'; return false; }
         this.busy = true;
         const data = [did >> 8, did & 255];
         try {
@@ -54,14 +55,24 @@ class SafeDiag {
             if (u && u[0] === 0x62 && u[1] === data[0] && u[2] === data[1]) {
                 if (did === this.probeDid) this.readAt = Date.now();
                 this.readText = bytes(u);
+                this.readbacks[did] = { ok: true, at: Date.now(), payload: Array.from(u).slice(3),
+                    raw: bytes(u), error: '' };
                 this.info = 'Read OK: 0x' + hex(did, 4) + ' (raw reply)';
+                return true;
             } else {
-                this.readAt = 0;
+                if (did === this.probeDid) this.readAt = 0;
                 this.readText = u ? bytes(u) : 'Timeout';
                 this.info = errorFor(u);
+                this.readbacks[did] = { ok: false, at: Date.now(), raw: this.readText,
+                    payload: null, error: this.info };
             }
-        } catch (e) { this.readAt = 0; this.info = 'Read error: ' + String(e.message || e); }
+        } catch (e) {
+            if (did === this.probeDid) this.readAt = 0;
+            this.info = 'Read error: ' + String(e.message || e);
+            this.readbacks[did] = { ok: false, at: Date.now(), raw: '', payload: null, error: this.info };
+        }
         finally { this.busy = false; }
+        return false;
     }
     async write(data, label) {
         if (this.busy) { this.info = 'Diagnostics busy'; return; }

@@ -141,9 +141,10 @@ mgu.run({
             tile(cv, 43, 254, 'Exhaust temperature', demo ? '312' : number('temperature', 0), '°C');
             tile(cv, 821, 254, 'Since last regen', demo ? '287' : number('distance', 1), 'km');
             card(cv, 43, 396, 1514, 68);
-            label(cv, 'Regeneration status', 70, 439, 28);
-            badge(cv, demo ? 'Inactive' : 'Unknown', 1325, 409, 195);
-            cv.roundRect(70, 451, 1450, 6, 3, C.track);
+            label(cv, 'Regeneration activity', 70, 439, 28);
+            // There is no validated active-regeneration flag in the supplied
+            // DDE data. Never draw a fake progress bar or infer an active cycle.
+            badge(cv, demo ? 'Inactive (demo)' : 'Not decoded', 1258, 409, 264);
             footer(cv, demo, enabled() ? diagState : 'Enable DDE read test in Settings');
         }
         function row(cv, y, left, right) {
@@ -152,31 +153,30 @@ mgu.run({
         }
         function regeneration(cv, demo) {
             card(cv, 43, 112, 1514, 352);
-            badge(cv, demo ? 'No active regeneration' : 'Regeneration unknown',
-                70, 131, demo ? 368 : 322);
-            // DID 44BB is an unverified request/status raw value, not "active".
-            row(cv, 238, demo ? 'Regeneration requested' : 'Request (raw DID 44BB)',
-                demo ? 'No' : number('request', 0));
+            badge(cv, demo ? 'Inactive (demo)' : 'No verified activity flag',
+                70, 131, demo ? 350 : 399);
+            const ash = number('ash', 1);
+            row(cv, 238, 'Filter oil-ash load (lifetime)', demo ? '15.5 g' : ash === '--' ? '--' : ash + ' g');
             cv.fillRect(70, 264, 1440, 1, C.track);
             const t = number('temperature', 0);
-            row(cv, 335, 'Exhaust temperature', demo ? '312 °C' : t === '--' ? '--' : t + ' °C');
+            row(cv, 335, 'Exhaust temperature (reading)', demo ? '312 °C' : t === '--' ? '--' : t + ' °C');
             cv.fillRect(70, 360, 1440, 1, C.track);
             const d = number('distance', 1);
             row(cv, 427, 'Distance since last regen', demo ? '287 km' : d === '--' ? '--' : d + ' km');
-            footer(cv, demo, 'Active regeneration flag not yet verified');
+            footer(cv, demo, 'Oil ash is a filter-load estimate, not a past regeneration event');
         }
         function history(cv, demo) {
             card(cv, 43, 112, 1514, 352);
-            label(cv, 'Regeneration history', 72, 162, 29, C.text, { font: 'bold' });
+            label(cv, demo ? 'Simulated regeneration events' : 'Recorded regeneration events',
+                72, 162, 29, C.text, { font: 'bold' });
             if (!demo) {
-                const ash = number('ash', 1);
-                row(cv, 237, 'Oil ash mass', ash === '--' ? '--' : ash + ' g');
-                cv.fillRect(70, 263, 1440, 1, C.track);
-                row(cv, 333, 'Successful regenerations', number('regens', 0));
-                cv.fillRect(70, 359, 1440, 1, C.track);
-                const avg = number('interval', 0);
-                row(cv, 426, 'Average regen interval', avg === '--' ? '--' : avg + ' km');
-                footer(cv, false, 'No verified regeneration events recorded');
+                label(cv, 'No verified regeneration event log has been recorded.',
+                    72, 264, 29, C.text);
+                label(cv, 'The DDE values alone cannot reconstruct event dates or durations.',
+                    72, 331, 24, C.dim);
+                label(cv, 'Event recording requires a validated active-regeneration flag.',
+                    72, 399, 23, C.dim);
+                footer(cv, false, 'No invented regeneration timestamps or durations');
                 return;
             }
             [['287 km ago', '14 min'], ['601 km ago', '18 min'], ['924 km ago', '16 min']]

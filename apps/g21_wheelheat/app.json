@@ -2,8 +2,8 @@
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
   "description": "Outdoor-temperature-based steering wheel and seat heating with explicit opt-in and protected BDC commands",
-  "version": "0.4.3",
-  "mguAppStartType": "manually",
+  "version": "0.4.4",
+  "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
   "iconGlyph": "LHZ",
@@ -28,18 +28,18 @@
                 ["BTN_SETTINGS", "Settings"]]
   }],
   "settings": [
-    {"key": "autoEnabled", "label": "Enable automatic heating", "type": "bool", "default": false},
+    {"key": "autoEnabled", "label": "Auto heating after MGU startup", "type": "bool", "default": false},
     {"key": "liveControl", "label": "Permit live BDC commands (unverified)", "type": "bool", "default": false},
     {"key": "belowTemp", "label": "Start at or below", "type": "number", "unit": "°C", "default": 8,
       "steps": [-10, -5, 0, 2, 5, 8, 10, 12, 15, 18, 20]},
     {"key": "wheelAuto", "label": "Steering wheel heating", "type": "bool", "default": true},
     {"key": "wheelMins", "label": "Steering wheel duration", "type": "number", "unit": "min", "default": 3,
-      "steps": [1, 2, 3, 4]},
+      "steps": [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]},
     {"key": "seatDriver", "label": "Driver seat heating", "type": "bool", "default": true},
     {"key": "seatPassenger", "label": "Passenger seat heating", "type": "bool", "default": false},
     {"key": "seatLevel", "label": "Seat heating level", "type": "number", "default": 3,
       "steps": [1, 2, 3]},
     {"key": "seatMins", "label": "Seat heating duration", "type": "number", "unit": "min", "default": 4,
-      "steps": [1, 2, 3, 4]}
+      "steps": [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]}
   ]
 }
