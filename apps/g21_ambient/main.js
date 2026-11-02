@@ -254,7 +254,7 @@ mgu.run({
                 else if (y >= 354 && y < 400 && x >= 1000 && x < 1227)
                     ctx.settings.set('applyTarget', 'slot11');
                 else if (y >= 354 && y < 400 && x >= 1245 && x < 1535)
-                    applyChoice();
+                    applyChoice().catch(e => { actionNotice = 'Apply error: ' + e.message; });
                 else if (y >= 414 && y < 459 && x >= 778 && x < 1110)
                     prepareOriginal();
             }
