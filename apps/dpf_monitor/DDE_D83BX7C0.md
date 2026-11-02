@@ -2,6 +2,8 @@
 
 Source: owner-supplied `D83BX7C0.prg`, identified in ISTA on a 2021 BMW G21 318d B47. The compiled EDIABAS object was decoded offline (XOR 0xF7, payload starting at 0xA0). The `SG_FUNKTIONEN` table contains 4,871 data and function rows with named IDs, result types and scaling.
 
+**Offline verification (2026-11-02):** All eight entries in `dpf-dids.js` were matched programmatically against the uploaded binary's `SG_FUNKTIONEN` table: DID, service 0x22, datatype/byte count, MUL, DIV, ADD and units (including meters-to-kilometers conversion). The PRG's `L/H` column is `High` for all eight. Unit tests use synthetic big-endian UDS replies; the headunit/vehicle replies remain unverified.
+
 **Scope:** The rows below are confirmed as contents of the provided file, **not yet verified as supported live values on the actual DDE**. The PRG itself is proprietary and is **not** included in this repository.
 
 | Signal | PRG argument | DID | Data type | PRG scaling | Unit |
