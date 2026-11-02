@@ -12,7 +12,7 @@
       "mgu-inputgate": "1.0.0"
     },
     "build": {
-      "python": "kit/tools/build.py",
+      "python": "tools/build_store_app.py",
       "args": [
         "{id}"
       ],

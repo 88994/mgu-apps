@@ -1,0 +1,43 @@
+{
+  "id": "g21_wheelheat",
+  "title": "G21 Heating Comfort",
+  "description": "BDC heating diagnostics and adjustable low-temperature comfort automation preview",
+  "version": "0.4.0",
+  "mguAppStartType": "autostart",
+  "vendor": "G21 Offline Lab",
+  "loggingId": "OAB2",
+  "iconGlyph": "LHZ",
+  "signals": {
+    "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
+      "_instances": "SystemFunctionsInternalTasuInst1",
+      "_methods": ["sendTasuRequest"],
+      "_broadcasts": ["sendTasuResponse"]
+    },
+    "de.bmw.infotainment.vehicle.Vehicle2": { "statusCarSpeed2": "rs" },
+    "de.bmw.infrastructure.EnvironmentalInformation": {
+      "ExteriorTemperature": "s"
+    }
+  },
+  "screens": [{
+    "name": "MAIN", "kind": "canvas", "title": "Heating Comfort",
+    "buttons": [["BTN_PAGE", "Next tab"], ["BTN_SELECT", "Select / Duration"],
+                ["BTN_ADJUST", "Change value"], ["BTN_ACTION", "Diagnostics / Action"],
+                ["BTN_LED", "Indicator LED test (Diagnostics)"], ["BTN_SETTINGS", "All settings"]]
+  }],
+  "settings": [
+    {"key": "engineeringWrites", "label": "Experimental ECU writes (2E test only)", "type": "bool", "default": false},
+    {"key": "manualSeconds", "label": "Manual heating duration", "type": "number", "unit": "s", "default": 60, "steps": [0, 30, 60, 120, 180, 240, 255]},
+    {"key": "ledAction", "label": "Indicator LED test (not heating)", "type": "choice", "default": "1", "options": [["0", "LED OFF"], ["1", "LED ON for 1 second"]]},
+    {"key": "autoEnabled", "label": "Comfort automation PREVIEW", "type": "bool", "default": false},
+    {"key": "simTempEnabled", "label": "TEST: Simulate outdoor temperature", "type": "bool", "default": false},
+    {"key": "simTempC", "label": "TEST: Simulated outdoor temp.", "type": "number", "unit": "C", "default": 0, "steps": [-20, -15, -10, -5, 0, 2, 5, 8, 10, 12, 15, 20, 25]},
+    {"key": "belowTemp", "label": "Start below outdoor temp.", "type": "number", "unit": "C", "default": 8, "steps": [-10, -5, 0, 2, 5, 8, 10, 12, 15, 18, 20]},
+    {"key": "coldDwell", "label": "Temperature stable for", "type": "number", "unit": "s", "default": 15, "steps": [0, 5, 10, 15, 30, 60]},
+    {"key": "wheelAuto", "label": "Auto steering wheel heat", "type": "bool", "default": true},
+    {"key": "wheelMins", "label": "Steering wheel duration", "type": "number", "unit": "min", "default": 3, "steps": [1, 2, 3, 4]},
+    {"key": "seatDriver", "label": "Auto driver seat heat", "type": "bool", "default": true},
+    {"key": "seatPassenger", "label": "Auto passenger seat heat", "type": "bool", "default": false},
+    {"key": "seatLevel", "label": "Seat heating level", "type": "number", "default": 3, "steps": [1, 2, 3]},
+    {"key": "seatMins", "label": "Seat heating duration", "type": "number", "unit": "min", "default": 4, "steps": [1, 2, 3, 4]}
+  ]
+}
