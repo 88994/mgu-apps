@@ -63,8 +63,8 @@ def patch_artifacts(repo_root, start_type="autostart"):
     if start_type not in START_TYPES:
         raise BuildError("Unknown start type: " + str(start_type))
     spec = _read_json(repo_root / "apps" / APP_ID / "app.json")
-    if spec.get("id") != APP_ID or spec.get("mguAppStartType") != "autostart":
-        raise BuildError("WheelHeat 0.4.0 autostart manifest is missing")
+    if spec.get("id") != APP_ID or spec.get("mguAppStartType") not in START_TYPES:
+        raise BuildError("WheelHeat manifest has no supported app start type")
     version = spec["version"]
     if not isinstance(version, str) or version.count(".") != 2:
         raise BuildError("Invalid version in WheelHeat manifest")
@@ -100,11 +100,11 @@ def patch_artifacts(repo_root, start_type="autostart"):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Build WheelHeat 0.4.0 with boot startup")
+    parser = argparse.ArgumentParser(description="Build WheelHeat with a verified startup mode")
     parser.add_argument("--sdk-root", type=Path, default=Path.cwd(),
                         help="Root of your idrive7-apps repository")
-    parser.add_argument("--start-type", choices=START_TYPES, default="autostart",
-                        help="autostart (default) or manually for test installs")
+    parser.add_argument("--start-type", choices=START_TYPES, default=None,
+                        help="override app.json start mode (default: use manifest)")
     parser.add_argument("--patch-only", action="store_true",
                         help="Update already-built SDK files without rerunning build.py")
     args = parser.parse_args(argv)
@@ -115,11 +115,12 @@ def main(argv=None):
             if not builder.is_file():
                 raise BuildError("SDK builder not found: " + str(builder))
             subprocess.run([sys.executable, str(builder), APP_ID], cwd=repo_root, check=True)
-        npm, mgu = patch_artifacts(repo_root, args.start_type)
+        start_type = args.start_type or _read_json(repo_root / "apps" / APP_ID / "app.json").get("mguAppStartType")
+        npm, mgu = patch_artifacts(repo_root, start_type)
     except (BuildError, OSError, subprocess.CalledProcessError, ValueError) as error:
         print("WheelHeat build failed: " + str(error), file=sys.stderr)
         return 1
-    print("Start type: " + args.start_type)
+    print("Start type: " + start_type)
     print("Verified: " + str(npm))
     print("Verified: " + str(mgu))
     print("Actual boot startup requires a compatible mgu-deploy installation.")

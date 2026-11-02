@@ -8,7 +8,7 @@ Eigene Apps für BMW MGU / iDrive 7, installierbar über den [MGU Store](https:/
 - **DPF Monitor 0.2.1** (`apps/dpf_monitor/`) – drei Seiten für Live-Werte, Regeneration und Historie. Experimentelle, standardmäßig deaktivierte UDS-Leseabfragen mit DPF-Kennungen aus der D83BX7C0-PRG; noch keine am Fahrzeug verifizierten Werte. Mit eigenem Icon (`icon.png`, 140 × 140) und SVG-Vorlage.
 
 - **G21 Ambient 0.3.3** (`apps/g21_ambient/`) – ambient lighting colour picker with synchronized RGB/HSV and brightness; safe preview of custom iDrive colour slot 11, no automatic FDL coding.
-- **G21 Heating Comfort 0.4.0** (`apps/g21_wheelheat/`) – steering-wheel/seat heating control preview, adjustable temperature threshold and duration, native MGU app autostart metadata. ECU writes remain opt-in and are unverified on-car.
+- **G21 Heating Comfort 0.4.2** (`apps/g21_wheelheat/`) – steering-wheel/seat heating control preview, adjustable temperature threshold and duration, native MGU app autostart metadata. ECU writes remain opt-in and are unverified on-car.
 
 Die geprüfte DID-Tabelle und den Prüfplan findest du unter [DPF-Monitor-DDE-Diagnose](apps/dpf_monitor/DDE_D83BX7C0.md). Der DDE-Lesetest muss in den App-Einstellungen ausdrücklich aktiviert werden; die Regenerationsanzeige bleibt bis zur Validierung unbekannt.
 
@@ -57,3 +57,7 @@ Offline DPF decoder test: `node tests/dpf-monitor-dids.test.js` (no car connecti
 Ein **separater Patch** ist bei kompatiblem `mgu-deploy` nicht nötig: Das Build-Skript setzt den nativen App-Starttyp im installierten `.tgz` auf `autostart`. Damit startet der App-Prozess beim MGU-Systemstart. Es werden weder ein Root-Dienst noch Fahrzeugcodierungen installiert. **Das automatische Einschalten der Heizungen ist standardmäßig deaktiviert** (`Comfort automation PREVIEW = off`, `Experimental ECU writes = off`). Die Autofunktion und reale Schreibwerte wurden nur offline geprüft, nicht im Fahrzeug validiert.
 
 Installationsablauf, Rückbau und Tests: [STORE_INSTALLATION.md](STORE_INSTALLATION.md).
+
+## Autostart-Testbranch (noch nicht für `main` freigegeben)
+
+Dieser Branch `wheelheat-autostart-0.4.2-qa` enthält WheelHeat 0.4.2 mit installiertem `mguAppStartType: autostart`. Er ist **nicht** die normale Store-Quelle. Auf `main` bleibt bis zum erfolgreich gemeldeten manuellen Test 0.4.1 ohne Autostart. Die automatische Heizfunktion und alle experimentellen ECU-Schreibzugriffe bleiben im Auslieferungszustand aus.

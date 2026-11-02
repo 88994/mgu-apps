@@ -1,6 +1,7 @@
 """Offline checks for the GitHub-repository MGU Store build dispatcher."""
 
 import importlib.util
+import json
 from pathlib import Path
 from unittest import TestCase, mock, main
 
@@ -25,12 +26,13 @@ class StoreBuildTests(TestCase):
         invoke.assert_called_once()
         patcher.assert_not_called()
 
-    def test_wheelheat_always_patches_installable_packages(self):
+    def test_wheelheat_uses_manifest_start_mode_for_installable_packages(self):
         with mock.patch.object(self.module.subprocess, "run") as invoke, \
              mock.patch.object(self.module, "patch_artifacts", return_value=("test.tgz", "test.mgu")) as patcher:
             self.assertEqual(self.module.main(["g21_wheelheat"]), 0)
         invoke.assert_called_once()
-        patcher.assert_called_once_with(SCRIPT.parents[1], "autostart")
+        manifest = json.loads((SCRIPT.parents[1] / "apps" / "g21_wheelheat" / "app.json").read_text(encoding="utf-8"))
+        patcher.assert_called_once_with(SCRIPT.parents[1], manifest["mguAppStartType"])
 
     def test_unknown_app_rejected_before_build(self):
         with mock.patch.object(self.module.subprocess, "run") as invoke:
