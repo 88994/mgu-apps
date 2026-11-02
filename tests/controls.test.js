@@ -89,11 +89,11 @@ test('Temperature test source: selectable, bounded and independent of real senso
         { value: null, at: 0, source: 'INVALID TEST VALUE' });
 });
 
-test('0.4.0 manifest: autostart metadata, independent manual and auto heating settings', () => {
+test('0.4.1 manifest: manually metadata, independent manual and auto heating settings', () => {
     const spec = JSON.parse(fs.readFileSync(path.join(BASE, 'apps/g21_wheelheat/app.json'), 'utf8'));
     const settings = Object.fromEntries(spec.settings.map(x => [x.key, x]));
-    assert.equal(spec.version, '0.4.0');
-    assert.equal(spec.mguAppStartType, 'autostart');
+    assert.equal(spec.version, '0.4.1');
+    assert.equal(spec.mguAppStartType, 'manually');
     assert.equal(settings.engineeringWrites.default, false, 'boot may never enable writes');
     assert.equal(settings.autoEnabled.default, false, 'boot preview is opt-in');
     assert.deepEqual(settings.manualSeconds.steps, B.TIMES);

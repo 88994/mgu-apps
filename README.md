@@ -8,7 +8,7 @@ Eigene Apps für BMW MGU / iDrive 7, installierbar über den [MGU Store](https:/
 - **DPF Monitor 0.2.1** (`apps/dpf_monitor/`) – drei Seiten für Live-Werte, Regeneration und Historie. Experimentelle, standardmäßig deaktivierte UDS-Leseabfragen mit DPF-Kennungen aus der D83BX7C0-PRG; noch keine am Fahrzeug verifizierten Werte. Mit eigenem Icon (`icon.png`, 140 × 140) und SVG-Vorlage.
 
 - **G21 Ambient 0.3.3** (`apps/g21_ambient/`) – ambient lighting colour picker with synchronized RGB/HSV and brightness; safe preview of custom iDrive colour slot 11, no automatic FDL coding.
-- **G21 Heating Comfort 0.4.0** (`apps/g21_wheelheat/`) – steering-wheel/seat heating control preview, adjustable temperature threshold and duration, native MGU app autostart metadata. ECU writes remain opt-in and are unverified on-car.
+- **G21 Heating Comfort 0.4.1** (`apps/g21_wheelheat/`) – steering-wheel/seat heating control preview, adjustable temperature threshold and duration, explicit manual startup for the first MGU Store test. ECU writes remain opt-in and are unverified on-car.
 
 Die geprüfte DID-Tabelle und den Prüfplan findest du unter [DPF-Monitor-DDE-Diagnose](apps/dpf_monitor/DDE_D83BX7C0.md). Der DDE-Lesetest muss in den App-Einstellungen ausdrücklich aktiviert werden; die Regenerationsanzeige bleibt bis zur Validierung unbekannt.
 
@@ -42,7 +42,7 @@ Die Datei `mgu-repo.json` erkennt automatisch jeden direkten Unterordner von `ap
 
 ## Build und Veröffentlichung
 
-Der MGU Store folgt dem Branch `main`, stellt beim Headunit-Build das `oap-sdk` aus einer vorhandenen BMW-App bereit und führt `tools/build_store_app.py` aus. Dieses ruft den regulären SDK-Builder auf und ergänzt bei WheelHeat im fertigen Installationspaket `mguAppStartType: autostart`; die beiden anderen Apps werden unverändert gebaut. Das Repository enthält die für englische App-Pakete benötigten Build-/Runtime-Dateien aus [idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps), aber keine großen Tests oder zusätzlichen chinesischen Schrift-/Lokalisierungspakete. Ein echter Build auf der MGU wurde noch nicht durchgeführt. Renderer und Controller-Gate sind als Abhängigkeiten auf das mitgelieferte `idrive7-apps`-Repository des Stores eingetragen.
+Der MGU Store folgt dem Branch `main`, stellt beim Headunit-Build das `oap-sdk` aus einer vorhandenen BMW-App bereit und führt `tools/build_store_app.py` aus. Dieses ruft den regulären SDK-Builder auf und übernimmt bei WheelHeat den in `app.json` ausgewählten Starttyp (`manually` auf `main`); die beiden anderen Apps werden unverändert gebaut. Das Repository enthält die für englische App-Pakete benötigten Build-/Runtime-Dateien aus [idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps), aber keine großen Tests oder zusätzlichen chinesischen Schrift-/Lokalisierungspakete. Ein echter Build auf der MGU wurde noch nicht durchgeführt. Renderer und Controller-Gate sind als Abhängigkeiten auf das mitgelieferte `idrive7-apps`-Repository des Stores eingetragen.
 
 Das BMW-SDK (`oap-sdk/`), private SSH-Schlüssel, VIN-Dateien und Fahrzeug-Backups **nicht** hochladen.
 
@@ -54,6 +54,6 @@ Offline DPF decoder test: `node tests/dpf-monitor-dids.test.js` (no car connecti
 
 ## WheelHeat-Autostart und Sicherheit
 
-Ein **separater Patch** ist bei kompatiblem `mgu-deploy` nicht nötig: Das Build-Skript setzt den nativen App-Starttyp im installierten `.tgz` auf `autostart`. Damit startet der App-Prozess beim MGU-Systemstart. Es werden weder ein Root-Dienst noch Fahrzeugcodierungen installiert. **Das automatische Einschalten der Heizungen ist standardmäßig deaktiviert** (`Comfort automation PREVIEW = off`, `Experimental ECU writes = off`). Die Autofunktion und reale Schreibwerte wurden nur offline geprüft, nicht im Fahrzeug validiert.
+**Erst die manuell gestartete Version testen:** `main` enthält WheelHeat **0.4.1** mit `mguAppStartType: manually`. Sie wird nicht automatisch beim MGU-Start gestartet. Die vorbereitete **0.4.2** mit `autostart` bleibt ausschließlich im Branch [`wheelheat-autostart-0.4.2-qa`](../../tree/wheelheat-autostart-0.4.2-qa), bis der Test bestätigt wurde. Anschließend wird die 0.4.2 nach `main` übernommen; der Store erkennt sie als Update. Es werden weder ein Root-Dienst noch Fahrzeugcodierungen installiert. **Das automatische Einschalten der Heizungen ist standardmäßig deaktiviert** (`Comfort automation PREVIEW = off`, `Experimental ECU writes = off`). Die Autofunktion und reale Schreibwerte wurden nur offline geprüft, nicht im Fahrzeug validiert.
 
 Installationsablauf, Rückbau und Tests: [STORE_INSTALLATION.md](STORE_INSTALLATION.md).

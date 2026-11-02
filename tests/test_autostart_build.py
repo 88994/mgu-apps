@@ -21,12 +21,12 @@ class AutostartPackageTests(unittest.TestCase):
         self.repo = Path(self.tmp.name)
         app = self.repo / "apps" / "g21_wheelheat"
         app.mkdir(parents=True)
-        (app / "app.json").write_text(json.dumps({"id": "g21_wheelheat", "version": "0.4.0",
+        (app / "app.json").write_text(json.dumps({"id": "g21_wheelheat", "version": "0.4.1",
                                                    "mguAppStartType": "autostart"}), encoding="utf-8")
         self.stage = self.repo / "dist" / "g21_wheelheat"
         src = self.stage / "source"
         src.mkdir(parents=True)
-        (src / "package.json").write_text(json.dumps({"name": "g21_wheelheat", "version": "0.4.0"}),
+        (src / "package.json").write_text(json.dumps({"name": "g21_wheelheat", "version": "0.4.1"}),
                                            encoding="utf-8")
         (self.stage / "meta.json").write_text('{"kit":1}', encoding="utf-8")
         (src / "javascript").mkdir()
@@ -34,8 +34,8 @@ class AutostartPackageTests(unittest.TestCase):
         (self.stage / "rhmiData").mkdir()
         (self.stage / "rhmiData" / "application.json").write_text("{}", encoding="utf-8")
         dist = self.repo / "dist"
-        self.npm = dist / "g21_wheelheat@0.4.0.tgz"
-        self.mgu = dist / "g21_wheelheat@0.4.0.mgu"
+        self.npm = dist / "g21_wheelheat@0.4.1.tgz"
+        self.mgu = dist / "g21_wheelheat@0.4.1.mgu"
         for result, members in ((self.npm, (("source", "package"),)),
                                 (self.mgu, (("meta.json", "meta.json"), ("source", "source"),
                                             ("rhmiData", "rhmiData")))):

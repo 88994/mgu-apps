@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, '..');
 const B = require('../apps/g21_wheelheat/logic');
 const { ComfortAuto } = require('../apps/g21_wheelheat/comfort_auto');
 
-test('0.4.0 UI: English tabs, manual setup is not live heat state; auto preview ends OFF', async () => {
+test('0.4.1 UI: English tabs, manual setup is not live heat state; auto preview ends OFF', async () => {
     const manifest = require('../apps/g21_wheelheat/app.json');
     const values = Object.fromEntries(manifest.settings.map(s => [s.key, s.default]));
     const buttons = new Map();
@@ -73,7 +73,7 @@ test('0.4.0 UI: English tabs, manual setup is not live heat state; auto preview 
     const screenshotLines = () => { lines.length = 0; render(); return lines.slice(); };
     onTab(2);
     let display = screenshotLines().join('\n');
-    assert.equal(manifest.version, '0.4.0');
+    assert.equal(manifest.version, '0.4.1');
     assert.match(display, /MANUAL\s+2E D0 74 3C\s+\(60s\)/);
     assert.match(display, /AUTO WHEEL\s+2E D0 74 B4\s+\(3min\)/);
 
