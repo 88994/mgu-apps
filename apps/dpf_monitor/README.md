@@ -1,12 +1,24 @@
-# DPF Monitor 0.2.0 — BMW G21 B47 / D83BX7C0
+# DPF Monitor 0.2.1 — BMW G21 B47 / D83BX7C0
 
 Read-only iDrive 7 DPF monitor built with the `cauliflowermossgrape/idrive7-apps` kit and installable through MGU Store.
+
+## Verification and localization in 0.2.1
+
+The eight configured DIDs were rechecked against the uploaded original `D83BX7C0.prg`: IDs, result types, raw byte counts, scaling and UDS `0x22` availability all match the `SG_FUNKTIONEN` table. UI text, statuses, demo labels and number formatting are now in English (decimal point).
+
+Offline regression test (no car, no SDK):
+
+```powershell
+node tests/dpf-monitor-dids.test.js
+```
+
+**Remaining uncertainty:** The `L/H` column of these PRG rows reads `High`, and the kit assumes network-order response bytes. Actual responses, routing and regeneration-state bits still require a vehicle test.
 
 ## What changed in 0.2.0
 
 The owner-supplied `D83BX7C0.prg` (BMW DDE / B47) was inspected offline. Its `SG_FUNKTIONEN` table gives UDS service `0x22` DIDs, result types and scaling for soot mass, ash mass, exhaust differential pressure, DPF temperature, distance since last successful regeneration, successful regeneration count and average regeneration interval.
 
-The app now contains those exact DID configurations in `dpf-dids.js` and attempts read-only reads through `kit/diag.js` + `kit/dids.js` **only when explicitly enabled**.
+The app contains those exact DID configurations in `dpf-dids.js` and attempts read-only reads through `kit/diag.js` + `kit/dids.js` **only when explicitly enabled**.
 
 **Important:** No response has yet been verified against this particular vehicle. The app is experimental. All DPF live readings are `--` by default.
 
