@@ -16,7 +16,7 @@ mgu.run({
         const { ui, settings, log } = ctx;
         let page = 0;
         let visible = false, timer = null, busy = false;
-        let diag = null, reader = null, diagState = 'Ausgeschaltet';
+        let diag = null, reader = null, diagState = 'Off';
         const values = Object.create(null);
         const reported = Object.create(null);
         const enabled = () => settings.get('dde_live') === 'on' && settings.get('demo') !== 'on';
@@ -30,7 +30,7 @@ mgu.run({
         function number(name, digits) {
             if (!enabled()) return '--';
             const value = latest(name);
-            return value === null ? '--' : value.toFixed(digits || 0).replace('.', ',');
+            return value === null ? '--' : value.toFixed(digits || 0);
         }
         function schedule(delay) {
             if (timer !== null) clearTimeout(timer);
@@ -43,17 +43,17 @@ mgu.run({
             busy = true;
             try {
                 if (!diag || !diag.p) {
-                    diagState = 'Verbinde DDE ...';
+                    diagState = 'Connecting to DDE ...';
                     diag = new Diag(ctx.signals, log);
                     diag.quiet = true;
                     await diag.init();
                     if (diag.p) reader = new DidReader(diag, { ecu: ECU });
                 }
                 if (!diag || !diag.p || !diag.available) {
-                    diagState = 'TASU nicht verfuegbar';
+                    diagState = 'TASU unavailable';
                     return;
                 }
-                diagState = 'Lese DDE ...';
+                diagState = 'Reading DDE ...';
                 let good = 0;
                 for (const field of READINGS) {
                     if (!allowed()) break;
@@ -70,10 +70,10 @@ mgu.run({
                     }
                     await pause(180); // one request at a time; avoid stressing gateway
                 }
-                diagState = good ? 'DDE-Testwerte (unverifiziert)' : 'Keine DDE-Antwort';
+                diagState = good ? 'DDE readings (unverified)' : 'No DDE response';
                 if (!good) log.warn('DDE D83BX7C0: no usable replies');
             } catch (err) {
-                diagState = 'Diagnosefehler';
+                diagState = 'Diagnostic error';
                 log.warn('DDE read-only polling: ' + err);
             } finally {
                 busy = false;
@@ -89,7 +89,7 @@ mgu.run({
         settings.onChange((key) => {
             if (key !== 'dde_live' && key !== 'demo') return;
             if (!enabled()) {
-                diagState = 'Ausgeschaltet';
+                diagState = 'Off';
                 Object.keys(values).forEach((name) => delete values[name]);
                 if (timer !== null) { clearTimeout(timer); timer = null; }
             } else schedule(0);
@@ -121,7 +121,7 @@ mgu.run({
             else if (enabled()) badge(cv, 'DDE TEST', 1370, 61, 178);
         }
         function footer(cv, demo, text) {
-            label(cv, demo ? 'Beispielwerte – keine echten Fahrzeugdaten' : text,
+            label(cv, demo ? 'Simulated values - not from the vehicle' : text,
                 50, 494, 22, C.dim);
         }
         function tile(cv, x, y, title, value, unit) {
@@ -131,15 +131,15 @@ mgu.run({
             if (unit && value !== '--') label(cv, unit, x + 36 + width, y + 104, 22, C.dim);
         }
         function live(cv, demo) {
-            tile(cv, 43, 112, 'Russmasse', demo ? '18,4' : number('soot', 1), 'g');
-            tile(cv, 821, 112, 'Differenzdruck', demo ? '24' : number('pressure', 1), 'mbar');
-            tile(cv, 43, 254, 'Abgastemperatur', demo ? '312' : number('temperature', 0), '°C');
-            tile(cv, 821, 254, 'Seit letzter Reg.', demo ? '287' : number('distance', 1), 'km');
+            tile(cv, 43, 112, 'Soot mass', demo ? '18.4' : number('soot', 1), 'g');
+            tile(cv, 821, 112, 'Differential pressure', demo ? '24' : number('pressure', 1), 'mbar');
+            tile(cv, 43, 254, 'Exhaust temperature', demo ? '312' : number('temperature', 0), '°C');
+            tile(cv, 821, 254, 'Since last regen', demo ? '287' : number('distance', 1), 'km');
             card(cv, 43, 396, 1514, 68);
-            label(cv, 'Regenerationsstatus', 70, 439, 28);
-            badge(cv, demo ? 'Inaktiv' : 'Unbekannt', 1325, 409, 195);
+            label(cv, 'Regeneration status', 70, 439, 28);
+            badge(cv, demo ? 'Inactive' : 'Unknown', 1325, 409, 195);
             cv.roundRect(70, 451, 1450, 6, 3, C.track);
-            footer(cv, demo, enabled() ? diagState : 'DDE-Lesetest in den Einstellungen aktivieren');
+            footer(cv, demo, enabled() ? diagState : 'Enable DDE read test in Settings');
         }
         function row(cv, y, left, right) {
             label(cv, left, 73, y, 28, C.dim);
@@ -147,34 +147,34 @@ mgu.run({
         }
         function regeneration(cv, demo) {
             card(cv, 43, 112, 1514, 352);
-            badge(cv, demo ? 'Keine aktive Regeneration' : 'Regeneration unbekannt',
+            badge(cv, demo ? 'No active regeneration' : 'Regeneration unknown',
                 70, 131, demo ? 368 : 322);
             // DID 44BB is an unverified request/status raw value, not "active".
-            row(cv, 238, demo ? 'Regeneration angefordert' : 'Anforderung (Rohwert, 44BB)',
-                demo ? 'Nein' : number('request', 0));
+            row(cv, 238, demo ? 'Regeneration requested' : 'Request (raw DID 44BB)',
+                demo ? 'No' : number('request', 0));
             cv.fillRect(70, 264, 1440, 1, C.track);
             const t = number('temperature', 0);
-            row(cv, 335, 'Abgastemperatur', demo ? '312 °C' : t === '--' ? '--' : t + ' °C');
+            row(cv, 335, 'Exhaust temperature', demo ? '312 °C' : t === '--' ? '--' : t + ' °C');
             cv.fillRect(70, 360, 1440, 1, C.track);
             const d = number('distance', 1);
-            row(cv, 427, 'Strecke seit letzter Reg.', demo ? '287 km' : d === '--' ? '--' : d + ' km');
-            footer(cv, demo, 'Regenerationsbits noch nicht sicher dekodiert');
+            row(cv, 427, 'Distance since last regen', demo ? '287 km' : d === '--' ? '--' : d + ' km');
+            footer(cv, demo, 'Active regeneration flag not yet verified');
         }
         function history(cv, demo) {
             card(cv, 43, 112, 1514, 352);
-            label(cv, 'Regenerationshistorie', 72, 162, 29, C.text, { font: 'bold' });
+            label(cv, 'Regeneration history', 72, 162, 29, C.text, { font: 'bold' });
             if (!demo) {
                 const ash = number('ash', 1);
-                row(cv, 237, 'Oelaschemasse', ash === '--' ? '--' : ash + ' g');
+                row(cv, 237, 'Oil ash mass', ash === '--' ? '--' : ash + ' g');
                 cv.fillRect(70, 263, 1440, 1, C.track);
-                row(cv, 333, 'Erfolgreiche Regenerationen', number('regens', 0));
+                row(cv, 333, 'Successful regenerations', number('regens', 0));
                 cv.fillRect(70, 359, 1440, 1, C.track);
                 const avg = number('interval', 0);
-                row(cv, 426, 'Mittleres Reg.-Intervall', avg === '--' ? '--' : avg + ' km');
-                footer(cv, false, 'Noch keine verifizierte Ereignishistorie');
+                row(cv, 426, 'Average regen interval', avg === '--' ? '--' : avg + ' km');
+                footer(cv, false, 'No verified regeneration events recorded');
                 return;
             }
-            [['vor 287 km', '14 min'], ['vor 601 km', '18 min'], ['vor 924 km', '16 min']]
+            [['287 km ago', '14 min'], ['601 km ago', '18 min'], ['924 km ago', '16 min']]
                 .forEach(([distance, duration], i) => {
                     const y = 239 + i * 76;
                     cv.circle(85, y - 9, 12, C.green);
@@ -191,7 +191,7 @@ mgu.run({
             if (page === 0) live(cv, demo);
             else if (page === 1) regeneration(cv, demo);
             else history(cv, demo);
-            G.frame(cv, ctx.theme(), ['Live', 'Regeneration', 'Historie'], page, []);
+            G.frame(cv, ctx.theme(), ['Live', 'Regeneration', 'History'], page, []);
             return ui.image('MAIN_GFX', cv);
         }
         ctx.loop('MAIN', 2, render);
