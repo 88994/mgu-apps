@@ -2,7 +2,7 @@
   "id": "dpf_monitor",
   "title": "DPF Monitor",
   "description": "Experimental read-only DDE D83BX7C0 DPF live data (opt-in); regeneration status still unverified",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "vendor": "custom",
   "loggingId": "OA9D",
   "iconGlyph": "DPF",

@@ -14,7 +14,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 mgu.run({
     async start(ctx) {
-        ctx.log.info('[WHEELHEAT] live-capable build; all ECU writes require explicit Settings opt-in');
+        ctx.log.info('[WHEELHEAT] all ECU writes require explicit automatic heating opt-in');
         const ctl = new SafeDiag(ctx, B.ECU, B.DID_HEAT);
         const auto = new ComfortAuto();
         // Prevent a crash/restart of the OAP process from immediately
@@ -24,7 +24,7 @@ mgu.run({
             Date.now() >= previousCycle && Date.now() - previousCycle < 30 * 60000)
             auto.fired = true;
         let cycleSaved = false;
-        const outside = { value: null, at: 0 };
+        const outside = { value: null, at: 0, raw: null };
         const acknowledged = new Set();
         let tab = 0, busy = false, statusBusy = false, statusAt = 0;
         let lastAction = 'No heating command has been sent.';
@@ -39,9 +39,14 @@ mgu.run({
         // values can reach the automatic ECU actuator.
         ctx.signals.watch('de.bmw.infrastructure.EnvironmentalInformation', '1', {
             ExteriorTemperature: v => {
-                const temp = B.exteriorTemp(v && v.temperatureExterior);
+                const raw = v && v.temperatureExterior;
+                const temp = B.exteriorTemp(raw);
                 if (temp !== null && temp >= -40 && temp <= 60) {
+                    if (outside.value !== temp || outside.raw !== raw)
+                        ctx.log.info('[WHEELHEAT TEMP] raw=' + raw + ' decoded=' +
+                            temp + 'C threshold=' + ctx.settings.get('belowTemp'));
                     outside.value = temp;
+                    outside.raw = raw;
                     outside.at = Date.now();
                 }
             },
@@ -58,9 +63,10 @@ mgu.run({
             seatLevel: Number(ctx.settings.get('seatLevel')),
             seatMins: Number(ctx.settings.get('seatMins')),
         });
-        // Use a NEW setting key. Old experimental manual-write permissions
-        // must never silently enable automatic heating after an upgrade.
-        const permitted = () => ctx.settings.get('liveControl') === true;
+        // The one visible automatic-heating switch is also explicit consent
+        // for guarded control. A versioned one-time reset prevents silently
+        // converting a previously enabled preview into live heating on upgrade.
+        const permitted = () => ctx.settings.get('autoEnabled') === true;
         const tempReading = now => B.temperatureInput(outside.value, outside.at, false, null, now);
 
         // A planner event is not a live heater state. Report an actual request
@@ -114,6 +120,10 @@ mgu.run({
                 for (const did of [B.DID_HEAT, B.DID_SEAT_DRIVER, B.DID_SEAT_PASSENGER]) {
                     if (!ctl.online) break;
                     await ctl.read(did);
+                    const reply = ctl.readbacks[did];
+                    if (reply) ctx.log.info('[HEATER STATUS SNAPSHOT] DID 0x' +
+                        did.toString(16).toUpperCase() + ' ' +
+                        (reply.ok ? reply.raw : reply.error));
                 }
                 statusAt = Date.now();
             } finally { statusBusy = false; }
@@ -160,14 +170,14 @@ mgu.run({
             const temp = fresh ? r.value.toFixed(1) + ' °C' : 'unavailable';
             const startReady = c.autoEnabled && permitted() && ctl.online && ctl.parked && fresh;
             const status = !c.autoEnabled ? 'AUTOMATION OFF'
-                : !permitted() ? 'LIVE CONTROL NOT ENABLED'
-                    : !fresh ? 'WAITING FOR REAL TEMPERATURE'
+                    : auto.active.size ? 'HEATING SCHEDULE ACTIVE'
+                    : !fresh ? 'WAITING FOR OUTDOOR TEMPERATURE'
                         : !ctl.online ? 'BDC CONNECTION UNAVAILABLE'
                             : !ctl.parked ? 'WAITING FOR CONFIRMED STANDSTILL'
-                                : auto.active.size ? 'HEATING CYCLE REQUESTED'
-                                    : auto.fired ? 'CYCLE FINISHED' : 'READY / WAITING FOR COLD';
+                                : auto.fired ? 'CYCLE FINISHED' : 'READY / WAITING FOR COLD';
             G.frame(cv, t, TABS, tab,
-                [{ text: startReady ? 'AUTO READY' : 'AUTO NOT READY', color: t.dim }]);
+                [{ text: auto.active.size ? 'AUTO SCHEDULED' :
+                    startReady ? 'AUTO READY' : 'AUTO NOT READY', color: t.dim }]);
             if (tab === 0) {
                 G.panel(cv, t, 24, 62, 743, 445, 'Automatic heating');
                 text(cv, status, 54, 148, 32, auto.active.size ? t.warn : t.accent, { font: 'bold' });
@@ -183,23 +193,22 @@ mgu.run({
                 text(cv, 'Passenger seat', 54, 365, 27, t.text);
                 text(cv, c.seatPassenger ? 'Level ' + c.seatLevel + ' / ' + c.seatMins + ' min' : 'Off',
                     693, 365, 25, c.seatPassenger ? t.accent : t.dim, { align: 'right' });
-                text(cv, 'One automatic cycle per MGU app start', 54, 422, 23, t.dim);
-                text(cv, 'Settings: on/off, temperature, duration, seats', 54, 476, 20, t.dim);
-
-                G.panel(cv, t, 788, 62, 788, 445, 'Connection & operation');
+                G.panel(cv, t, 788, 62, 788, 445, 'Heating overview');
                 text(cv, 'BDC  ' + (ctl.online ? 'CONNECTED' : 'UNAVAILABLE'), 820, 149, 29,
                     ctl.online ? t.accent : t.warn, { font: 'bold' });
-                text(cv, 'Standstill  ' + (ctl.parked ? 'confirmed' : 'not confirmed'), 820, 198, 24, t.text);
-                text(cv, 'Live writes  ' + (permitted() ? 'enabled' : 'disabled'), 820, 247, 24, t.text);
-                text(cv, 'Scheduled wheel time: ' + auto.remaining('Steering wheel', now) + ' s',
-                    820, 308, 23, t.text);
-                text(cv, 'Scheduled seat time: ' + Math.max(auto.remaining('Driver seat', now),
-                    auto.remaining('Passenger seat', now)) + ' s', 820, 349, 23, t.text);
-                cv.fillRect(820, 373, 710, 1, '#2e4052');
-                text(cv, 'Last ECU action:', 820, 408, 21, t.dim);
-                text(cv, lastAction.slice(0, 64), 820, 443, 20, t.warn);
-                text(cv, 'Over 4 min: extension only when BDC is reachable and car is parked.',
-                    820, 483, 18, t.dim);
+                text(cv, 'Steering wheel: ' + (c.wheelAuto ? c.wheelMins + ' min selected' : 'Off'),
+                    820, 219, 26, t.text);
+                text(cv, 'Driver seat: ' + (c.seatDriver ? c.seatMins + ' min / level ' + c.seatLevel : 'Off'),
+                    820, 276, 26, t.text);
+                text(cv, 'Passenger seat: ' + (c.seatPassenger ? c.seatMins + ' min / level ' + c.seatLevel : 'Off'),
+                    820, 333, 26, t.text);
+                cv.fillRect(820, 356, 710, 1, '#2e4052');
+                text(cv, 'Remaining scheduled time', 820, 406, 22, t.dim);
+                text(cv, 'Wheel ' + auto.remaining('Steering wheel', now) + 's   Seats ' +
+                    Math.max(auto.remaining('Driver seat', now),
+                        auto.remaining('Passenger seat', now)) + 's', 820, 453, 30, t.accent);
+                if (ctx.settings.saveError)
+                    text(cv, 'Settings could not be saved; see log', 820, 482, 20, t.warn);
             } else {
                 G.panel(cv, t, 24, 62, 1552, 445, 'Actual BDC read-back (read-only)');
                 text(cv, 'ECU 0x40    Service 22    Refresh: Diagnostics / Action',
@@ -207,21 +216,23 @@ mgu.run({
                 const readRow = (label, did, y) => {
                     const entry = ctl.readbacks[did];
                     const stale = !entry || now - entry.at > 30000;
-                    text(cv, label + '  (0x' + did.toString(16).toUpperCase() + ')',
-                        54, y, 25, t.text);
-                    text(cv, stale ? 'NO FRESH ECU REPLY' : entry.ok
-                        ? entry.raw.slice(0, 54) : entry.error.slice(0, 54),
+                    text(cv, label, 54, y, 25, t.text);
+                    text(cv, stale ? 'NOT AVAILABLE' : entry.ok
+                        ? 'ECU responded - state not yet decoded' : 'Status unavailable (read rejected)',
                         665, y, 23, !stale && entry.ok ? t.accent : t.warn);
                 };
                 readRow('Steering wheel', B.DID_HEAT, 207);
                 readRow('Driver seat', B.DID_SEAT_DRIVER, 267);
                 readRow('Passenger seat', B.DID_SEAT_PASSENGER, 327);
                 cv.fillRect(54, 354, 1450, 1, '#2e4052');
-                text(cv, 'ON/OFF not decoded: the actual BDC reply must be verified against PRG data.',
+                text(cv, 'Real ON/OFF decoding requires validated BDC status jobs.',
                     54, 400, 24, t.warn);
                 text(cv, statusBusy ? 'Reading BDC ...' : 'Last ECU read: ' + (statusAt ?
                     Math.round((now - statusAt) / 1000) + 's ago' : 'not yet'), 54, 448, 22, t.dim);
-                text(cv, ctl.info.slice(0, 100), 54, 486, 20, t.dim);
+                text(cv, 'Outside sensor: ' + (outside.raw === null ? 'unavailable' :
+                    'raw ' + outside.raw + ' -> ' + outside.value.toFixed(1) + ' °C') +
+                    '   |   start threshold ' + c.belowTemp + ' °C',
+                54, 486, 20, t.dim);
             }
             return ctx.ui.image('MAIN_GFX', cv);
         });

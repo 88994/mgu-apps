@@ -85,6 +85,7 @@ class Settings {
     constructor(schema) {
         this.schema = schema || [];
         this.file = path.join(DATA_DIR, 'settings.json');
+        this.saveError = null;
         this.values = {};
         this.listeners = [];
         for (const s of this.schema) this.values[s.key] = s.default;
@@ -102,12 +103,22 @@ class Settings {
             const mark = '_reset_' + it.key;
             if (it.reset && this.values[mark] !== it.reset) { this.values[it.key] = it.default; this.values[mark] = it.reset; changed = true; }
         }
-        if (changed && fs.existsSync(this.file)) try { fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1)); } catch (e) { /* read-only */ }
+        if (changed && fs.existsSync(this.file)) this.save();
     }
     get(key) { return this.values[key]; }
+    save() {
+        try {
+            fs.mkdirSync(path.dirname(this.file), { recursive: true });
+            fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1));
+            this.saveError = null;
+        } catch (e) {
+            this.saveError = String(e && e.message || e);
+            log.warn('settings save failed (' + this.file + '): ' + this.saveError);
+        }
+    }
     set(key, value) {
         this.values[key] = value;
-        try { fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1)); } catch (e) { log.warn('settings save: ' + e); }
+        this.save();
         this.listeners.forEach((fn) => { try { fn(key, value); } catch (e) { log.error(e); } });
     }
     /** Persist a whole interactive gesture in one file write and one UI update.
@@ -117,8 +128,7 @@ class Settings {
         const entries = Object.entries(changes || {});
         if (!entries.some(([key, value]) => this.values[key] !== value)) return;
         for (const [key, value] of entries) this.values[key] = value;
-        try { fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1)); }
-        catch (e) { log.warn('settings save: ' + e); }
+        this.save();
         this.listeners.forEach((fn) => { try { fn(null, null); } catch (e) { log.error(e); } });
     }
     onChange(fn) { this.listeners.push(fn); }

@@ -1,15 +1,15 @@
-# DPF Monitor 0.2.1 — BMW G21 B47 / D83BX7C0
+# DPF Monitor 0.2.4 — BMW G21 B47 / D83BX7C0
 
 Read-only iDrive 7 DPF monitor built with the `cauliflowermossgrape/idrive7-apps` kit and installable through MGU Store.
 
-## Verification and localization in 0.2.1
+## Verification and localization
 
 The eight configured DIDs were rechecked against the uploaded original `D83BX7C0.prg`: IDs, result types, raw byte counts, scaling and UDS `0x22` availability all match the `SG_FUNKTIONEN` table. UI text, statuses, demo labels and number formatting are now in English (decimal point).
 
-Offline regression test (no car, no SDK):
+Offline navigation regression test (no car, no SDK):
 
 ```powershell
-node tests/dpf-monitor-dids.test.js
+node tests/g21_car_ui_smoke.test.js
 ```
 
 **Remaining uncertainty:** The `L/H` column of these PRG rows reads `High`, and the kit assumes network-order response bytes. Actual responses, routing and regeneration-state bits still require a vehicle test.
@@ -26,8 +26,8 @@ The app contains those exact DID configurations in `dpf-dids.js` and attempts re
 
 - **DDE live diagnostics (experimental): Off** is the safe default. Switch to On for a supervised stationary-car read test after making a backup of existing diagnostic logs.
 - While On, the app sends only UDS `0x22` `ReadDataByIdentifier` requests to candidate engine ECU address `0x12`. Reads are sequential; the polling sequence runs only while the main app screen is visible. No diagnostic requests are issued in demo mode.
-- **Simulated DPF data: On** enables artificial example readings and an artificial history, visibly marked `DEMO`. This is unrelated to real sensor readings.
-- **Live page**: soot, differential pressure, exhaust temperature, distance since last completed regeneration. **Regeneration page**: temperature and distance plus an **unverified raw regeneration-request value**. **History page**: current ash mass, successful regeneration count and average interval; a true timestamped event history is not yet implemented.
+- **Simulated DPF data: On** enables artificial example readings marked `DEMO`. This is unrelated to real sensor readings.
+- **Live page**: soot, differential pressure, exhaust temperature, distance since last completed regeneration. **Regeneration page**: lifetime oil-ash load, temperature and distance. There is no event-history tab because event timestamps cannot yet be determined reliably.
 - When the experimental toggle is Off, real readings and raw status values are hidden. Stale readings older than 45 seconds are also hidden.
 
 ## What is not yet implemented
@@ -49,7 +49,7 @@ py .\kit\tools\build.py dpf_monitor
 node .\kit\tools\emu.js dpf_monitor
 ```
 
-Open `http://localhost:8077/`. Set **Simulated DPF data** to On to inspect all three pages. The emulator does not have a DDE transport and cannot verify real DIDs.
+Open `http://localhost:8077/`. Set **Simulated DPF data** to On to inspect both pages. The emulator does not have a DDE transport and cannot verify real DIDs.
 
 For in-car verification, leave the experimental DDE toggle Off until the vehicle is stationary and you are ready to compare against ISTA / Tool32. Avoid running this alongside ECU programming.
 

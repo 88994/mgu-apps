@@ -144,7 +144,10 @@ mgu.run({
             if (!ctl.verified) {
                 actionNotice = 'STEP 1/3: Reading ECU 22 E311 ...';
                 await ctl.read(A.DID);
-                actionNotice = ctl.verified ? 'STEP 2/3: ECU read OK. Tap APPLY to arm.' : ctl.info;
+                actionNotice = ctl.verified ? 'ECU ready. Tap APPLY again to arm the change.' :
+                    /NRC 0x31/.test(ctl.info)
+                        ? 'ECU rejected Read 22 E311 (NRC 31). Confirm RAM PRG / DID.'
+                        : ctl.info;
             } else {
                 actionNotice = ctl.pending ? 'STEP 3/3: Sending confirmed color ...' : 'STEP 2/3: Arming color command ...';
                 await ctl.write(raw(), 'RAM-LIN RGB #' + rgbHex(selected().rgb));
@@ -310,15 +313,18 @@ mgu.run({
                 };
                 choice(778, 217, 'Temporary', target === 'temporary');
                 choice(1001, 228, 'Menu slot 11', target === 'slot11');
-                const applyLabel = target === 'slot11' ? 'Prepare FDL plan' :
-                    !ctl.verified ? '1. Read ECU' : ctl.pending ? '3. Confirm' : '2. Arm color';
-                choice(1245, 292, applyLabel, false);
+                // Keep the main action stable. The preparation sequence is
+                // explained below instead of relabelling the button itself.
+                cv.fillRect(1245, 356, 292, 42, '#1b5565');
+                text(cv, 'APPLY', 1330, 385, 24, '#ffffff', { font: 'bold' });
                 cv.fillRect(778, 416, 332, 40, '#1d2632');
                 text(cv, 'Prepare factory restore', 793, 445, 20, t.text);
                 text(cv, actionNotice.slice(0, 72), 785, 466, 18, t.warn);
                 text(cv, target === 'slot11'
-                    ? 'Slot 11: matching colors. FDL coding still unavailable.'
-                    : 'Temporary output requires ECU read, consent and standstill.',
+                    ? 'Slot 11: prepare the FDL plan; no ECU coding is sent.'
+                    : !ctl.verified ? 'Apply: read ECU -> arm -> confirm (parked only).'
+                        : ctl.pending ? 'Ready to send: tap APPLY again within 8 seconds.'
+                            : 'ECU ready: tap APPLY to arm, then confirm.',
                     785, 497, 18, t.dim);
             } else {
                 G.panel(cv, t, 24, 62, 761, 445, 'RAM01 / Diagnostics');

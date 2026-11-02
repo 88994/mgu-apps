@@ -25,15 +25,21 @@ assert.match(ambient, /actionNotice = ctl\.info/, 'Ambient displays apply result
 assert(!wheel.includes('simTempEnabled'), 'no simulated temperature in live automation');
 assert(!spec('g21_wheelheat').settings.some(s => /^(simTemp|ledAction|manualSeconds)/.test(s.key)));
 assert.equal(spec('g21_wheelheat').mguAppStartType, 'autostart');
-assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'liveControl').default, false);
+assert(!spec('g21_wheelheat').settings.some(s => s.key === 'liveControl'),
+    'duplicate live-control consent must be removed');
 assert(!spec('g21_wheelheat').settings.some(s => s.key === 'engineeringWrites'),
     'legacy manual-write opt-in must not enable new automation');
 assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').default, false);
+assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').reset,
+    'single-consent-0.4.5', 'migration must require fresh opt-in');
 assert.match(wheel, /ctl\.autoWrite\(data/, 'guarded live BDC command path present');
 assert.match(wheel, /ctl\.parked/, 'standstill guard present');
 assert.match(wheel, /ctl\.readbacks\[did\]/, 'BDC diagnostics must use actual ECU readbacks');
 assert(!dpf.includes('Request (raw DID 44BB)'), 'unknown request not mislabelled as status');
 assert(!dpf.includes('cv.roundRect(70, 451, 1450, 6'), 'fake DPF progress bar removed');
+assert(!dpf.includes("['Live', 'Regeneration', 'History']"), 'history tab must be removed');
+assert(!dpf.includes('No verified activity flag'), 'unverified regeneration badge removed');
+assert.match(ambient, /text\(cv, 'APPLY'/, 'stable Apply button must be visible');
 assert.match(ambient, /setMany\(change\)/, 'slider changes must batch persistence');
 
 // The pure planner emits one ON event followed by one OFF event.

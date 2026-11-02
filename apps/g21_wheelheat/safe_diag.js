@@ -36,7 +36,7 @@ class SafeDiag {
     get parked() { return this.speed !== null && this.speed <= 0.5 && Date.now() - this.speedAt < 5000; }
     get verified() { return this.readAt > 0 && Date.now() - this.readAt < 60000; }
     get writeReady() {
-        if (this.ctx.settings.get('liveControl') !== true) return 'Live BDC control disabled in Settings';
+        if (this.ctx.settings.get('autoEnabled') !== true) return 'Automatic heating disabled in Settings';
         if (!this.online) return 'TASU/ECU unavailable';
         if (!this.verified) return 'Read status first (max. 60s)';
         if (!this.parked) return 'Vehicle standstill not confirmed';
