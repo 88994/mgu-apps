@@ -2,13 +2,13 @@
 
 1. In MGU Store add the GitHub source `NamelsMissing/mgu-apps` (authenticate if the repository is private).
 2. Select **Branch → main**. Do not choose the historical `wheelheat-autostart-0.4.2-qa` branch.
-3. Refresh the source and update `dpf_monitor` 0.2.6, `g21_ambient` 0.3.8 and `g21_wheelheat` 0.4.7.
+3. Refresh the source and update `dpf_monitor` 0.2.7, `g21_ambient` 0.3.9 and `g21_wheelheat` 0.4.8.
 4. WheelHeat's installed package already includes `mguAppStartType: autostart`; there is no separate USB patch or second source branch required.
 5. Restart the MGU to test *process* autostart. Separately enable **Automatic heating on cold startup** in the app if it has never been enabled. Future normal updates preserve that choice and the other settings.
 
 Autostart may depend on the MGU's app platform and installed deploy version. Check the MGU Store installation log and WheelHeat app log to verify process startup after a real head-unit restart.
 
-**Important:** Physical heating duration while driving is not guaranteed by process autostart. The current one-byte BDC command allows up to 255 seconds, and extending it still requires confirmed standstill. Only on-car validation can establish which alternate strategy is supported.
+**Important:** Physical heating duration while driving is not guaranteed by process autostart. The automatic 0x2E BDC command can now start and extend while driving if the speed signal and a fresh BDC read are valid, but the ECU may still reject those requests at speed. The command's timer field allows up to 255 seconds. Actual physical results require on-car validation. Manual writes still require standstill.
 
 Offline checks (no BMW SDK):
 
@@ -18,3 +18,5 @@ node tests/wheelheat_live_gate.test.js
 node tests/ambient_temporary_apply.test.js
 node --test tests/ambient_ui.test.js tests/wheelheat_ui.test.js tests/controls.test.js
 ```
+
+Settings are stored atomically in each installed app's stable `data/settings.json` with a local backup and should survive normal app restarts and Store updates. If the settings disappear again, inspect the application's log for `settings save failed` and the MGU Store update log for whether the app's data directory was retained.

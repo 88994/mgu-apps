@@ -35,11 +35,11 @@ assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').d
 assert(!('reset' in spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled')),
     'stored startup consent must survive updates');
 assert.match(wheel, /ctl\.autoWrite\(data/, 'guarded live BDC command path present');
-assert.match(wheel, /ctl\.parked/, 'standstill guard present');
+assert.match(wheel, /ctl\.motionKnown/, 'fresh speed guard present for in-motion automation');
 assert.match(wheel, /ctl\.readbacks\[did\]/, 'BDC diagnostics must use actual ECU readbacks');
 assert(!dpf.includes('Request (raw DID 44BB)'), 'unknown request not mislabelled as status');
 assert(!dpf.includes('cv.roundRect(70, 451, 1450, 6'), 'fake DPF progress bar removed');
-assert(!dpf.includes("['Live', 'Regeneration', 'History']"), 'history tab must be removed');
+assert.match(dpf, /\['Live', 'History'\]/, 'saved real measurement history replaces redundant page');
 assert(!dpf.includes('No verified activity flag'), 'unverified regeneration badge removed');
 assert.match(ambient, /text\(cv, 'APPLY'/, 'stable Apply button must be visible');
 assert.match(ambient, /setMany\(change\)/, 'slider changes must batch persistence');

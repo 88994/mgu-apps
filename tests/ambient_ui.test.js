@@ -8,7 +8,7 @@ const app = require('../apps/g21_ambient/app.json');
 const main = fs.readFileSync(path.join(__dirname, '../apps/g21_ambient/main.js'), 'utf8');
 
 test('ambient color controls retain touch drag and a visible Apply button', () => {
-    assert.equal(app.version, '0.3.8');
+    assert.equal(app.version, '0.3.9');
     assert.match(main, /ctx\.onTouch\(/);
     assert.match(main, /phase === 2/);
     assert.match(main, /text\(cv, 'APPLY'/);

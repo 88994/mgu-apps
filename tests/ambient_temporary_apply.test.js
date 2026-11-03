@@ -50,6 +50,33 @@ async function run() {
     ctl.diag.physical = async () => [0x62, 0xF1, 0x50, ...Buffer.from('OTHER_ECU')];
     await ctl.read(0xF150);
     assert(!ctl.verified, 'an unknown ECU identity must not authorize LIN writes');
-    console.log('OK: E310/E311 NRC31, numeric SGBD identity shown, unmatched ECU writes blocked');
+
+    // Actual RAM01 identification observed on the owner's G21 at 0x37:
+    // 62 F1 50 0F 25 90. Writes require both a fresh match and two
+    // deliberate APPLY presses at confirmed standstill.
+    ctl.diag.physical = async (_ecu, sid, request) => {
+        if (sid === 0x22) return [0x62, 0xF1, 0x50, 0x0F, 0x25, 0x90];
+        writes++;
+        return [0x6E, request[0], request[1]];
+    };
+    ctl.speedAt = Date.now();
+    await ctl.read(0xF150);
+    assert.equal(ctl.identity, '0F 25 90');
+    assert.equal(ctl.verified, true, 'known RAM01 SGBD index must verify');
+    await ctl.write(command, 'custom RGB');
+    assert.equal(writes, 0, 'first APPLY only arms confirmation');
+    assert.match(ctl.info, /Press SEND AGAIN/);
+    await ctl.write(command, 'custom RGB');
+    assert.equal(writes, 1, 'second APPLY sends guarded 2E E311 once');
+    assert.equal(ctl.verified, false, 'next write requires a fresh RAM read');
+    await ctl.write(command, 'custom RGB');
+    assert.equal(writes, 1, 'no third write without fresh identity');
+
+    await ctl.read(0xF150);
+    ctl.speed = 20;
+    ctl.speedAt = Date.now();
+    await ctl.write(command, 'custom RGB');
+    assert.equal(writes, 1, 'moving vehicle blocks LIN write');
+    console.log('OK: RAM01 0F2590 gated two-press apply; unknown ECU and moving writes blocked');
 }
 run().catch(e => { console.error(e); process.exitCode = 1; });

@@ -48,8 +48,19 @@ async function run() {
     ctl.speedAt = Date.now();
     ctl.lastWriteAt = 0;
     fresh();
-    assert.equal(await ctl.autoWrite(data, 'Heating ON'), false, 'vehicle moving');
-    assert.equal(calls, 1);
-    console.log('OK: no writes without opt-in, ECU read and verified standstill');
+    ctl.diag.physical = async (_ecu, sid, req) => {
+        if (sid === 0x2E) { calls++; return [0x6E, req[0], req[1]]; }
+        return [0x62, req[0], req[1]];
+    };
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), true,
+        'vehicle moving with fresh BDC and speed signal may auto-start');
+    assert.equal(calls, 2);
+    ctl.speedAt = Date.now() - 10000;
+    ctl.lastWriteAt = 0;
+    fresh();
+    assert.equal(await ctl.autoWrite(data, 'Heating ON'), false,
+        'stale vehicle-speed signal blocks moving writes');
+    assert.equal(calls, 2);
+    console.log('OK: automatic moving writes require consent, live speed and fresh BDC read');
 }
 run().catch(e => { console.error(e); process.exitCode = 1; });

@@ -73,8 +73,8 @@ mgu.run({
         // response remains unverified until an on-car test.
         async function sendIntent(intent) {
             if (intent.type === 'OFF' && !acknowledged.has(intent.device)) return false;
-            if (!permitted() || !ctl.online || !ctl.parked) {
-                lastAction = intent.device + ': NOT sent (permission / BDC / stationary check).';
+            if (!permitted() || !ctl.online || !ctl.motionKnown) {
+                lastAction = intent.device + ': NOT sent (permission / BDC / speed-signal check).';
                 ctx.log.warn('[AUTO BLOCKED] ' + lastAction);
                 return false;
             }
@@ -83,16 +83,16 @@ mgu.run({
                 : B.seat(intent.data.side, intent.data.level,
                     intent.type === 'OFF' ? 0 : intent.data.seconds);
 
-            // BDC is polled before every 2E write. Commands are serialized with
-            // >=3s between writes. Driving away or losing vehicle speed blocks it.
+            // BDC is read before each 2E write, with >=3s between requests.
+            // The command can run while moving, but stale speed data blocks it.
             const remaining = 3000 - (Date.now() - ctl.lastWriteAt);
             if (remaining > 0) await wait(remaining);
-            if (!permitted() || !ctl.parked || !ctl.online) {
+            if (!permitted() || !ctl.motionKnown || !ctl.online) {
                 lastAction = intent.device + ': NOT sent (conditions changed).';
                 return false;
             }
             if (!ctl.verified) await ctl.read(B.DID_HEAT);
-            if (!ctl.verified || !ctl.parked || !permitted()) {
+            if (!ctl.verified || !ctl.motionKnown || !permitted()) {
                 lastAction = intent.device + ': NOT sent (' + ctl.info + ').';
                 return false;
             }
@@ -136,9 +136,9 @@ mgu.run({
             busy = true;
             try {
                 const now = Date.now(), cfg = config(), reading = tempReading(now);
-                const canStart = cfg.autoEnabled && permitted() && ctl.online && ctl.parked;
-                // Continue an acknowledged session's timer when the car moves;
-                // no new commands are sent while speed cannot be confirmed zero.
+                const canStart = cfg.autoEnabled && permitted() && ctl.online && ctl.motionKnown;
+                // Start, extend or stop a confirmed comfort-heating cycle while
+                // moving as long as speed data are fresh and BDC accepts writes.
                 const enabledForPlanner = cfg.autoEnabled && (canStart || auto.active.size > 0);
                 const intents = auto.step({ now, tempC: reading.value, tempAt: reading.at,
                     cfg: Object.assign({}, cfg, { autoEnabled: enabledForPlanner }) });
@@ -167,12 +167,12 @@ mgu.run({
             const now = Date.now(), c = config(), r = tempReading(now);
             const fresh = r.value !== null && now - r.at <= 120000;
             const temp = fresh ? r.value.toFixed(1) + ' °C' : 'unavailable';
-            const startReady = c.autoEnabled && permitted() && ctl.online && ctl.parked && fresh;
+            const startReady = c.autoEnabled && permitted() && ctl.online && ctl.motionKnown && fresh;
             const status = !c.autoEnabled ? 'AUTOMATION OFF'
                     : auto.active.size ? 'HEATING SCHEDULE ACTIVE'
                     : !fresh ? 'WAITING FOR OUTDOOR TEMPERATURE'
                         : !ctl.online ? 'BDC CONNECTION UNAVAILABLE'
-                            : !ctl.parked ? 'WAITING FOR CONFIRMED STANDSTILL'
+                            : !ctl.motionKnown ? 'WAITING FOR VEHICLE SPEED SIGNAL'
                                 : auto.fired ? 'CYCLE FINISHED' : 'READY / WAITING FOR COLD';
             G.frame(cv, t, TABS, tab,
                 [{ text: auto.active.size ? 'AUTO SCHEDULED' :

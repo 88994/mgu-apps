@@ -1,4 +1,4 @@
-# DPF Monitor 0.2.6 — BMW G21 B47 / D83BX7C0
+# DPF Monitor 0.2.7 — BMW G21 B47 / D83BX7C0
 
 Read-only iDrive 7 DPF monitor built with the `cauliflowermossgrape/idrive7-apps` kit and installable through MGU Store.
 
@@ -20,13 +20,13 @@ The owner-supplied `D83BX7C0.prg` (BMW DDE / B47) was inspected offline. Its `SG
 
 The app contains those DID configurations in `dpf-dids.js` and automatically attempts read-only reads through `kit/diag.js` + `kit/dids.js` when its screen is visible.
 
-**Important:** Current in-car screenshots show `No usable DDE response (soot: no reply)`. Actual scaling and successful response routing have not yet been verified with this vehicle. A genuine absent value is shown as `--`, never replaced by test data.
+**Important:** Current in-car screenshots show valid soot and ash values but no live differential pressure, exhaust temperature or distance reply. Those remaining DIDs/routing are not verified in this vehicle. A genuine absent value is shown as `--`, never replaced by test data.
 
 ## Settings and behavior
 
 - The last two experimental settings are removed. Live requests cannot be disabled and artificial DPF data are not generated.
 - The app sends UDS `0x22` `ReadDataByIdentifier` requests to candidate DDE address `0x12`. Reads are sequential; polling runs while the screen is visible. If the candidate address is silent, one read-only functional engine-speed request (`01 0C`) tries to locate the engine ECU address.
-- **Live page**: soot, differential pressure, exhaust temperature, distance since last completed regeneration. **Regeneration page**: lifetime oil-ash load, temperature and distance. There is no event-history tab because event timestamps cannot yet be determined reliably.
+- **Live page**: soot, differential pressure, exhaust temperature, distance since last completed regeneration. **History page**: up to 50 timestamped snapshots of actual valid live DDE readings, stored locally at most once every three minutes and preserved across restarts/normal updates. No regeneration event dates/durations are invented.
 - Stale readings older than 45 seconds are hidden. When the DDE is silent, the status explains the unanswered request instead of displaying fabricated measurements.
 
 ## What is not yet implemented

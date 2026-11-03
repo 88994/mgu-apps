@@ -32,7 +32,9 @@ const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'app-spec.json'), '
 /* ---------------- paths ---------------- */
 // cwd of an OAP app is oap_<uid>/data; source is oap_<uid>/source
 const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
-const DATA_DIR = fs.existsSync(path.join(APP_ROOT, 'data')) ? path.join(APP_ROOT, 'data') : process.cwd();
+// Always use the installed app's stable data folder. A missing folder is
+// created on save; process.cwd() may differ on a background/autostart launch.
+const DATA_DIR = path.join(APP_ROOT, 'data');
 const RHMI_RES = path.join(APP_ROOT, 'rhmiData', 'resources');
 
 /* ---------------- logging: SDK logger (DLT) + small rotating file ---------------- */
@@ -85,16 +87,27 @@ class Settings {
     constructor(schema) {
         this.schema = schema || [];
         this.file = path.join(DATA_DIR, 'settings.json');
+        this.backup = path.join(DATA_DIR, 'settings.backup.json');
         this.saveError = null;
         this.values = {};
         this.listeners = [];
         for (const s of this.schema) this.values[s.key] = s.default;
-        try { Object.assign(this.values, JSON.parse(fs.readFileSync(this.file, 'utf8'))); } catch (e) {}
+        // Recover from an interrupted or corrupt primary write. Never reset
+        // user choices simply because the primary file cannot be parsed.
+        for (const candidate of [this.file, this.backup]) {
+            try {
+                const saved = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+                if (!saved || typeof saved !== 'object' || Array.isArray(saved)) continue;
+                Object.assign(this.values, saved);
+                log.info('settings loaded from ' + candidate);
+                break;
+            } catch (e) { /* missing/corrupt: try the backup */ }
+        }
         // one-time move of saved settings to the new default theme (M Tricolour); later choices are kept
         const th = this.item('theme');
         if (th && fs.existsSync(this.file) && this.values._themeV !== 2) {
             this.values.theme = th.default; this.values._themeV = 2;
-            try { fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1)); } catch (e) { /* read-only */ }
+            this.save();
         }
         // a setting with "reset": n in app.json goes back to its default once when n changes
         // (a new default reaches cars that saved the old one); later choices are kept
@@ -107,13 +120,20 @@ class Settings {
     }
     get(key) { return this.values[key]; }
     save() {
+        const temp = this.file + '.tmp-' + process.pid;
         try {
             fs.mkdirSync(path.dirname(this.file), { recursive: true });
-            fs.writeFileSync(this.file, JSON.stringify(this.values, null, 1));
+            const serialized = JSON.stringify(this.values, null, 1);
+            fs.writeFileSync(temp, serialized);
+            // A rename in the same directory replaces the file atomically,
+            // preventing a restart from observing half-written JSON.
+            fs.renameSync(temp, this.file);
+            fs.writeFileSync(this.backup, serialized);
             this.saveError = null;
         } catch (e) {
             this.saveError = String(e && e.message || e);
             log.warn('settings save failed (' + this.file + '): ' + this.saveError);
+            try { fs.unlinkSync(temp); } catch (_) {}
         }
     }
     set(key, value) {

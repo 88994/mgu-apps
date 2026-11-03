@@ -56,16 +56,22 @@ class SafeDiag {
             const u = await this.diag.physical(this.target, 0x22, data, 2300, replyTo(0x22, data), { maxRetries: 0 });
             if (u && u[0] === 0x62 && u[1] === data[0] && u[2] === data[1]) {
                 if (did === this.probeDid) {
-                    // BMW IDENT / 22 F150 returns 3-byte SGBD index, not
-                    // ASCII SGBD name. No index-to-RAM01 map is verified yet.
+                    // BMW 22 F150 returns the three-byte SGBD index. The
+                    // vehicle's observed 0F 25 90 identifies RAM01 (0x37).
+                    // Authorize this known variant only; other replies remain
+                    // read-only and cannot pass the write gate.
                     this.identity = u.length >= 6 ? bytes(u.slice(3, 6)) : 'short reply';
-                    this.readAt = 0;
+                    this.readAt = u.length >= 6 && u[3] === 0x0F &&
+                        u[4] === 0x25 && u[5] === 0x90 ? Date.now() : 0;
                 }
                 this.lastReadDid = did;
                 this.readText = bytes(u);
                 this.info = 'RAM read 0x' + hex(did, 4) + ' OK' +
-                    (did === this.probeDid ? ' (SGBD index ' + this.identity +
-                        '; variant not yet verified, write blocked)' : '');
+                    (did === this.probeDid
+                        ? (this.verified
+                            ? ' (RAM01 0F2590 verified; apply requires two presses while parked)'
+                            : ' (unknown SGBD index ' + this.identity + '; write blocked)')
+                        : '');
             } else {
                 if (did === this.probeDid) { this.readAt = 0; this.identity = null; }
                 this.lastReadDid = did;

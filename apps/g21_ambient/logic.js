@@ -5,7 +5,9 @@ const ECU = 0x37;
 const DID = 0xE311;
 // The car rejects both E310 and E311 reads with NRC 31. Standard 22 F150
 // identifies an ECU by numeric SGBD index; it does not return "RAM01" text.
-// Until that index is mapped to the uploaded RAM01 PRG, writes stay blocked.
+// The owner-observed 0F2590 index matches RAM01 at 0x37. SafeDiag
+// allows only this identity with fresh speed, parked status and two presses.
+// Physical output of 2E E311 remains unverified until a vehicle test.
 const PROBE_DID = 0xF150;
 const COLORS = Object.freeze([
     { name: 'Warm white', rgb: [254, 155, 65], on: 1 },

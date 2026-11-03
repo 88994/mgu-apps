@@ -1,7 +1,7 @@
 'use strict';
 
-// Intentionally identical to g21_ambient/safe_diag.js. The SDK packages each
-// app independently, so both carry their own self-contained safety gate.
+// WheelHeat BDC diagnostic gate. Automatic comfort commands may be sent
+// while moving only with a recent speed signal and a positive BDC readback.
 const { Diag, hex, NRC, replyTo } = require('./kit/diag');
 class SafeDiag {
     constructor(ctx, target, probeDid) {
@@ -34,12 +34,22 @@ class SafeDiag {
     }
     get online() { return !!(this.diag.p && this.diag.available); }
     get parked() { return this.speed !== null && this.speed <= 0.5 && Date.now() - this.speedAt < 5000; }
+    get motionKnown() { return this.speed !== null && this.speed >= 0 && this.speed < 350 &&
+        Date.now() - this.speedAt < 5000; }
     get verified() { return this.readAt > 0 && Date.now() - this.readAt < 60000; }
     get writeReady() {
         if (this.ctx.settings.get('autoEnabled') !== true) return 'Automatic heating disabled in Settings';
         if (!this.online) return 'TASU/ECU unavailable';
         if (!this.verified) return 'Read status first (max. 60s)';
         if (!this.parked) return 'Vehicle standstill not confirmed';
+        if (Date.now() - this.lastWriteAt < 3000) return '3s cooldown active';
+        return '';
+    }
+    get autoWriteReady() {
+        if (this.ctx.settings.get('autoEnabled') !== true) return 'Automatic heating disabled in Settings';
+        if (!this.online) return 'TASU/ECU unavailable';
+        if (!this.motionKnown) return 'Vehicle speed unavailable or stale';
+        if (!this.verified) return 'Read BDC status first';
         if (Date.now() - this.lastWriteAt < 3000) return '3s cooldown active';
         return '';
     }
@@ -97,13 +107,14 @@ class SafeDiag {
         finally { this.busy = false; }
     }
     /** Automation-specific write: the Settings opt-in authorizes commands,
-     * but each command STILL requires a fresh 22 read and confirmed standstill.
+     * but each command STILL requires a fresh 22 read and fresh speed data.
+     * Movement no longer blocks comfort heating; an ECU refusal still does.
      * No simulator or unknown-speed command is ever sent to the vehicle.
      * Returns true only on a positive 0x6E reply (not proof of physical heat).
      */
     async autoWrite(data, label) {
         if (this.busy) { this.info = 'BDC busy'; return false; }
-        const reason = this.writeReady;
+        const reason = this.autoWriteReady;
         if (reason) { this.info = reason; return false; }
         this.busy = true;
         this.info = 'Sending ' + label + ' to BDC ...';

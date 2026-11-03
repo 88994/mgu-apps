@@ -1,8 +1,8 @@
 {
   "id": "dpf_monitor",
   "title": "DPF Monitor",
-  "description": "Read-only DDE D83BX7C0 DPF live data; regeneration status still unverified",
-  "version": "0.2.6",
+  "description": "Live, read-only DDE DPF measurements with persistent real-reading history",
+  "version": "0.2.7",
   "vendor": "custom",
   "loggingId": "OA9D",
   "iconGlyph": "DPF",

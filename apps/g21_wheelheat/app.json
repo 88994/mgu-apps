@@ -1,8 +1,8 @@
 {
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
-  "description": "Outdoor-temperature-based steering wheel and seat heating with explicit opt-in and protected BDC commands",
-  "version": "0.4.7",
+  "description": "Persistent cold-weather heating automation with motion-aware BDC commands and readback",
+  "version": "0.4.8",
   "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
@@ -10,8 +10,12 @@
   "signals": {
     "com.harman.infotainment.systemfunctions.tasu.tasu.InternalTasu": {
       "_instances": "SystemFunctionsInternalTasuInst1",
-      "_methods": ["sendTasuRequest"],
-      "_broadcasts": ["sendTasuResponse"]
+      "_methods": [
+        "sendTasuRequest"
+      ],
+      "_broadcasts": [
+        "sendTasuResponse"
+      ]
     },
     "de.bmw.infotainment.vehicle.Vehicle2": {
       "statusCarSpeed2": "rs"
@@ -20,25 +24,122 @@
       "ExteriorTemperature": "s"
     }
   },
-  "screens": [{
-    "name": "MAIN",
-    "kind": "canvas",
-    "title": "Heating Comfort",
-    "buttons": [["BTN_PAGE", "Next tab"], ["BTN_ACTION", "Read BDC status"],
-                ["BTN_SETTINGS", "Settings"]]
-  }],
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "Heating Comfort",
+      "buttons": [
+        [
+          "BTN_PAGE",
+          "Next tab"
+        ],
+        [
+          "BTN_ACTION",
+          "Read BDC status"
+        ],
+        [
+          "BTN_SETTINGS",
+          "Settings"
+        ]
+      ]
+    }
+  ],
   "settings": [
-    {"key": "autoEnabled", "label": "Automatic heating on cold startup", "type": "bool", "default": false},
-    {"key": "belowTemp", "label": "Start at or below", "type": "number", "unit": "°C", "default": 8,
-      "steps": [-10, -5, 0, 2, 5, 8, 10, 12, 15, 18, 20]},
-    {"key": "wheelAuto", "label": "Steering wheel heating", "type": "bool", "default": true},
-    {"key": "wheelMins", "label": "Steering wheel duration", "type": "number", "unit": "min", "default": 3,
-      "steps": [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]},
-    {"key": "seatDriver", "label": "Driver seat heating", "type": "bool", "default": true},
-    {"key": "seatPassenger", "label": "Passenger seat heating", "type": "bool", "default": false},
-    {"key": "seatLevel", "label": "Seat heating level", "type": "number", "default": 3,
-      "steps": [1, 2, 3]},
-    {"key": "seatMins", "label": "Seat heating duration", "type": "number", "unit": "min", "default": 4,
-      "steps": [1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20]}
+    {
+      "key": "autoEnabled",
+      "label": "Automatic heating on cold startup",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "belowTemp",
+      "label": "Start at or below",
+      "type": "number",
+      "unit": "°C",
+      "default": 8,
+      "steps": [
+        -10,
+        -5,
+        0,
+        2,
+        5,
+        8,
+        10,
+        12,
+        15,
+        18,
+        20
+      ]
+    },
+    {
+      "key": "wheelAuto",
+      "label": "Steering wheel heating",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "wheelMins",
+      "label": "Steering wheel duration",
+      "type": "number",
+      "unit": "min",
+      "default": 3,
+      "steps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12,
+        15,
+        20
+      ]
+    },
+    {
+      "key": "seatDriver",
+      "label": "Driver seat heating",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "seatPassenger",
+      "label": "Passenger seat heating",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "seatLevel",
+      "label": "Seat heating level",
+      "type": "number",
+      "default": 3,
+      "steps": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "key": "seatMins",
+      "label": "Seat heating duration",
+      "type": "number",
+      "unit": "min",
+      "default": 4,
+      "steps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        8,
+        10,
+        12,
+        15,
+        20
+      ]
+    }
   ]
 }

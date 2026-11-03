@@ -1,6 +1,8 @@
 'use strict';
 
 // DPF monitor for DDE D83BX7C0. Only genuine, read-only UDS data is shown.
+const fs = require('fs');
+const path = require('path');
 const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const { Diag } = require('./kit/diag');
@@ -21,6 +23,32 @@ mgu.run({
         let diag = null, reader = null, diagState = 'Connecting';
         let identityChecked = false;
         const values = Object.create(null);
+        // Real measurements only. No regeneration events are fabricated from
+        // soot mass or distance alone. Retain a small chronological sample log.
+        const historyFile = path.join(ctx.dataDir, 'dpf_readings.json');
+        let history = [];
+        try {
+            const saved = JSON.parse(fs.readFileSync(historyFile, 'utf8'));
+            if (Array.isArray(saved)) history = saved.filter(v =>
+                v && Number.isFinite(v.at) && v.at > 0 && v.at < 8640000000000000).slice(0, 50);
+        } catch (e) { /* no previous samples */ }
+        function recordSample() {
+            const now = Date.now();
+            if (history.length && now - history[0].at < 3 * 60000) return;
+            const sample = { at: now, soot: latest('soot'), ash: latest('ash'),
+                pressure: latest('pressure'), temperature: latest('temperature'),
+                distance: latest('distance') };
+            if (sample.soot === null && sample.ash === null && sample.pressure === null &&
+                sample.distance === null && sample.temperature === null) return;
+            history.unshift(sample);
+            history = history.slice(0, 50);
+            const tmp = historyFile + '.tmp-' + process.pid;
+            try {
+                fs.mkdirSync(ctx.dataDir, { recursive: true });
+                fs.writeFileSync(tmp, JSON.stringify(history));
+                fs.renameSync(tmp, historyFile);
+            } catch (e) { log.warn('DPF history save failed: ' + e); }
+        }
         const reported = Object.create(null);
         const reportedFailures = Object.create(null);
         const allowed = () => visible;
@@ -80,6 +108,7 @@ mgu.run({
                     }
                     await pause(180); // one request at a time; avoid stressing gateway
                 }
+                if (good) recordSample();
                 diagState = good ? 'Live data received from ECU 0x' + reader.ecu.toString(16).toUpperCase() :
                     'No usable DDE response' + (firstFailure ? ' (' + firstFailure + ')' : '');
                 // The engine ECU is the unit which answers the standard OBD
@@ -173,26 +202,37 @@ mgu.run({
             label(cv, left, 73, y, 28, C.dim);
             label(cv, right, 1510, y, 28, C.text, { align: 'right', font: 'bold' });
         }
-        function regeneration(cv) {
-            card(cv, 43, 112, 1514, 352);
-            label(cv, 'DPF load and regeneration data', 72, 164, 29, C.text, { font: 'bold' });
-            const ash = number('ash', 1);
-            row(cv, 238, 'Filter oil-ash load (lifetime)', ash === '--' ? '--' : ash + ' g');
-            cv.fillRect(70, 264, 1440, 1, C.track);
-            const t = number('temperature', 0);
-            row(cv, 335, 'Exhaust temperature (reading)', t === '--' ? '--' : t + ' °C');
-            cv.fillRect(70, 360, 1440, 1, C.track);
-            const d = number('distance', 1);
-            row(cv, 427, 'Distance since last regen', d === '--' ? '--' : d + ' km');
-            if (latest('ash') === null && latest('temperature') === null)
-                label(cv, statusText().slice(0, 86), 50, 490, 19, C.dim);
+        function readingHistory(cv) {
+            card(cv, 43, 112, 1514, 350);
+            label(cv, 'Recorded live measurements', 73, 155, 30, C.text, { font: 'bold' });
+            if (!history.length) {
+                label(cv, 'No measurements saved yet.', 73, 245, 29, C.dim);
+                label(cv, 'Valid live readings are saved at most once every 3 minutes.',
+                    73, 295, 23, C.dim);
+                return;
+            }
+            const columns = [75, 465, 715, 1030, 1320];
+            ['Date / time (UTC)', 'Soot', 'Pressure', 'DPF temp.', 'Since regen'].forEach((v, i) =>
+                label(cv, v, columns[i], 204, 23, C.dim));
+            for (let i = 0; i < Math.min(4, history.length); i++) {
+                const e = history[i], y = 263 + i * 57;
+                const fmt = (n, unit, digits) => Number.isFinite(n) ?
+                    n.toFixed(digits) + ' ' + unit : '--';
+                const line = [new Date(e.at).toISOString().slice(5, 16).replace('T', ' '),
+                    fmt(e.soot, 'g', 1), fmt(e.pressure, 'mbar', 1),
+                    fmt(e.temperature, '°C', 0), fmt(e.distance, 'km', 1)];
+                line.forEach((v, j) => label(cv, v, columns[j], y, 24, C.text));
+                if (i < 3) cv.fillRect(73, y + 14, 1425, 1, C.track);
+            }
+            label(cv, history.length + ' saved samples - actual values, not regeneration events',
+                73, 494, 20, C.dim);
         }
         function render() {
             const cv = ctx.canvas(W, H).clear(C.bg);
             heading(cv);
             if (page === 0) live(cv);
-            else regeneration(cv);
-            G.frame(cv, ctx.theme(), ['Live', 'Regeneration'], page, []);
+            else readingHistory(cv);
+            G.frame(cv, ctx.theme(), ['Live', 'History'], page, []);
             return ui.image('MAIN_GFX', cv);
         }
         ctx.loop('MAIN', 2, render);

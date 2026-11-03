@@ -146,8 +146,7 @@ mgu.run({
             }
             if (!ctl.verified) {
                 // E310 and E311 readbacks are rejected by this vehicle.
-                // Collect the numeric ECU identity. No LIN write is attempted
-                // until that index is mapped to the correct PRG variant.
+                // Validate the RAM01 numeric identity before a LIN write.
                 actionNotice = 'Checking RAM variant (22 F150) ...';
                 await ctl.read(A.PROBE_DID);
                 if (!ctl.verified) { actionNotice = ctl.info; return; }
@@ -328,7 +327,8 @@ mgu.run({
                     350, 145, 25, ctl.online ? t.accent : t.warn);
                 text(cv, 'RAM identity (F150)', 56, 205, 25, t.dim);
                 text(cv, ctl.identity === null ? 'Not identified' :
-                    'SGBD index ' + ctl.identity + ' (unverified)',
+                    ctl.verified ? 'RAM01 verified (0F2590)' :
+                        'SGBD index ' + ctl.identity + ' (unverified)',
                 350, 205, 25, ctl.verified ? t.accent : t.warn);
                 text(cv, 'Vehicle speed', 56, 265, 25, t.dim);
                 text(cv, ctl.speed === null ? 'Unavailable' : ctl.speed.toFixed(1) + ' km/h',
