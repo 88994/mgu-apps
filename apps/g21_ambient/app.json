@@ -2,7 +2,7 @@
   "id": "g21_ambient",
   "title": "G21 Ambient Lighting",
   "description": "RGB color picker, temporary LIN test and safe iDrive slot 11 FDL preparation (no automatic FDL writing)",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB1",
   "iconGlyph": "RGB",

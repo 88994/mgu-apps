@@ -145,9 +145,10 @@ mgu.run({
                 return;
             }
             if (!ctl.verified) {
-                // The previous E311 preflight was rejected with NRC 31.
-                // RAM01 documents E310 as an independent, read-only LIN status.
-                actionNotice = 'Checking RAM LIN status (22 E310) ...';
+                // E310 and E311 readbacks are rejected by this vehicle.
+                // Collect the numeric ECU identity. No LIN write is attempted
+                // until that index is mapped to the correct PRG variant.
+                actionNotice = 'Checking RAM variant (22 F150) ...';
                 await ctl.read(A.PROBE_DID);
                 if (!ctl.verified) { actionNotice = ctl.info; return; }
             }
@@ -323,11 +324,11 @@ mgu.run({
             } else {
                 G.panel(cv, t, 24, 62, 761, 445, 'RAM / Live diagnostics');
                 text(cv, 'Connection', 56, 145, 25, t.dim);
-                text(cv, ctl.online ? 'RAM gateway available' : 'RAM gateway unavailable',
+                text(cv, ctl.online ? 'TASU connected' : 'TASU unavailable',
                     350, 145, 25, ctl.online ? t.accent : t.warn);
-                text(cv, 'LIN status (E310)', 56, 205, 25, t.dim);
-                text(cv, !ctl.verified ? 'Not confirmed' : ctl.linActive === null ? 'Reply received' :
-                    ctl.linActive ? 'LIN bus active' : 'LIN bus inactive',
+                text(cv, 'RAM identity (F150)', 56, 205, 25, t.dim);
+                text(cv, ctl.identity === null ? 'Not identified' :
+                    'SGBD index ' + ctl.identity + ' (unverified)',
                 350, 205, 25, ctl.verified ? t.accent : t.warn);
                 text(cv, 'Vehicle speed', 56, 265, 25, t.dim);
                 text(cv, ctl.speed === null ? 'Unavailable' : ctl.speed.toFixed(1) + ' km/h',
@@ -339,7 +340,7 @@ mgu.run({
                 text(cv, 'Press DIAGNOSTICS / ACTION to refresh read-only status.',
                     56, 422, 22, t.text);
                 G.panel(cv, t, 805, 62, 771, 445, 'ECU response / LED target');
-                text(cv, 'RAM01  |  Address 0x37  |  Read 22 E310', 835, 142, 24, t.text);
+                text(cv, 'RAM target 0x37  |  Read 22 F150', 835, 142, 24, t.text);
                 text(cv, 'Readback: ' + ctl.readText.slice(0, 42), 835, 197, 23, t.dim);
                 text(cv, 'LED target: ' + (Number(ctx.settings.get('linId')) === 0 ?
                     'All LIN RGB modules' : 'Module ' + ctx.settings.get('linId')),

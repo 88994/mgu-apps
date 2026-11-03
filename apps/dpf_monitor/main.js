@@ -1,6 +1,6 @@
 'use strict';
 
-// DPF monitor for DDE D83BX7C0. Experimental read-only UDS reads are opt-in.
+// DPF monitor for DDE D83BX7C0. Only genuine, read-only UDS data is shown.
 const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const { Diag } = require('./kit/diag');
@@ -18,15 +18,13 @@ mgu.run({
         // Start read-only polling even if an initial HMI Visible event was
         // missed while the app was loading. Later hide events still stop it.
         let visible = true, timer = null, busy = false;
-        let diag = null, reader = null, diagState = 'Off';
+        let diag = null, reader = null, diagState = 'Connecting';
+        let identityChecked = false;
         const values = Object.create(null);
         const reported = Object.create(null);
         const reportedFailures = Object.create(null);
-        const enabled = () => settings.get('dde_live') === 'on' && settings.get('demo') !== 'on';
-        const allowed = () => visible && enabled();
-        const statusText = () => !enabled()
-            ? 'DDE reading is Off — enable it in Settings'
-            : 'DDE: ' + diagState;
+        const allowed = () => visible;
+        const statusText = () => 'DDE: ' + diagState;
         const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
         function latest(name) {
@@ -34,7 +32,6 @@ mgu.run({
             return item && Date.now() - item.at < 45000 ? item.value : null;
         }
         function number(name, digits) {
-            if (!enabled()) return '--';
             const value = latest(name);
             return value === null ? '--' : value.toFixed(digits || 0);
         }
@@ -83,8 +80,39 @@ mgu.run({
                     }
                     await pause(180); // one request at a time; avoid stressing gateway
                 }
-                diagState = good ? 'Data received' :
+                diagState = good ? 'Live data received from ECU 0x' + reader.ecu.toString(16).toUpperCase() :
                     'No usable DDE response' + (firstFailure ? ' (' + firstFailure + ')' : '');
+                // The engine ECU is the unit which answers the standard OBD
+                // engine-speed PID 01 0C (41 0C A B). The BMW SGBD index
+                // from 22 F150 is numeric and cannot be decoded as a name.
+                // This is one read-only functional discovery per app start.
+                if (!good && !identityChecked && allowed()) {
+                    identityChecked = true;
+                    diagState = 'Checking DDE diagnostic address ...';
+                    try {
+                        const found = await diag.functional(0x01, [0x0C], {
+                            idleMs: 1500, maxMs: 9000,
+                        });
+                        const engines = [];
+                        for (const [address, uds] of found) {
+                            if (uds && uds.length >= 4 && uds[0] === 0x41 && uds[1] === 0x0C)
+                                engines.push(address);
+                        }
+                        if (engines.length === 1) {
+                            reader.ecu = engines[0];
+                            diagState = 'Engine ECU responding at 0x' +
+                                reader.ecu.toString(16).toUpperCase() + '; checking DPF DIDs';
+                            log.info('DPF read-only engine address: 0x' +
+                                reader.ecu.toString(16).toUpperCase());
+                        } else {
+                            diagState = engines.length ? 'Engine ECU ambiguous; keeping address 0x12' :
+                                'Engine ECU not responding; check ignition / DDE connection';
+                        }
+                    } catch (err) {
+                        diagState = 'DDE address check failed: ' + String(err.message || err);
+                        log.warn('DDE identification: ' + err);
+                    }
+                }
                 if (!good) log.warn('DDE D83BX7C0: no usable replies');
             } catch (err) {
                 diagState = 'Diagnostic error';
@@ -103,15 +131,6 @@ mgu.run({
         // A Renderd-backed page may already be visible before its callback is
         // registered. The first polling attempt must not depend on it.
         schedule(1500);
-        settings.onChange((key) => {
-            if (key !== 'dde_live' && key !== 'demo') return;
-            if (!enabled()) {
-                diagState = 'Off';
-                Object.keys(values).forEach((name) => delete values[name]);
-                if (timer !== null) { clearTimeout(timer); timer = null; }
-            } else schedule(0);
-        });
-
         ctx.signals.watch(CBS, '1', {
             cBSMessageParticleFilter: () => {
                 // CBS is a service reminder, not a DPF measurement or regeneration event.
@@ -133,17 +152,8 @@ mgu.run({
         function label(cv, txt, x, y, size, colour, opt) {
             return cv.text(txt, x, y, size, colour || C.text, Object.assign({ literal: true }, opt || {}));
         }
-        function badge(cv, txt, x, y, w) {
-            card(cv, x, y, w, 35, C.badge);
-            label(cv, txt, x + w / 2, y + 26, 20, C.text, { align: 'center' });
-        }
-        function heading(cv, demo) {
+        function heading(cv) {
             label(cv, 'DPF MONITOR', 50, 93, 29, C.text, { font: 'bold' });
-            if (demo) badge(cv, 'DEMO', 1420, 61, 128);
-        }
-        function footer(cv, demo, text) {
-            label(cv, demo ? 'Simulated values - not from the vehicle' : text,
-                50, 494, 22, C.dim);
         }
         function tile(cv, x, y, title, value, unit) {
             card(cv, x, y, 736, 164);
@@ -151,40 +161,37 @@ mgu.run({
             const width = label(cv, value, x + 27, y + 120, 43, C.text, { font: 'bold' });
             if (unit && value !== '--') label(cv, unit, x + 36 + width, y + 120, 22, C.dim);
         }
-        function live(cv, demo) {
-            tile(cv, 43, 112, 'Soot mass', demo ? '18.4' : number('soot', 1), 'g');
-            tile(cv, 821, 112, 'Differential pressure', demo ? '24' : number('pressure', 1), 'mbar');
-            tile(cv, 43, 290, 'Exhaust temperature', demo ? '312' : number('temperature', 0), '°C');
-            tile(cv, 821, 290, 'Since last regen', demo ? '287' : number('distance', 1), 'km');
-            if (demo) footer(cv, true);
-            else if (latest('soot') === null && latest('pressure') === null)
+        function live(cv) {
+            tile(cv, 43, 112, 'Soot mass', number('soot', 1), 'g');
+            tile(cv, 821, 112, 'Differential pressure', number('pressure', 1), 'mbar');
+            tile(cv, 43, 290, 'Exhaust temperature', number('temperature', 0), '°C');
+            tile(cv, 821, 290, 'Since last regen', number('distance', 1), 'km');
+            if (latest('soot') === null && latest('pressure') === null)
                 label(cv, statusText().slice(0, 86), 50, 490, 19, C.dim);
         }
         function row(cv, y, left, right) {
             label(cv, left, 73, y, 28, C.dim);
             label(cv, right, 1510, y, 28, C.text, { align: 'right', font: 'bold' });
         }
-        function regeneration(cv, demo) {
+        function regeneration(cv) {
             card(cv, 43, 112, 1514, 352);
             label(cv, 'DPF load and regeneration data', 72, 164, 29, C.text, { font: 'bold' });
             const ash = number('ash', 1);
-            row(cv, 238, 'Filter oil-ash load (lifetime)', demo ? '15.5 g' : ash === '--' ? '--' : ash + ' g');
+            row(cv, 238, 'Filter oil-ash load (lifetime)', ash === '--' ? '--' : ash + ' g');
             cv.fillRect(70, 264, 1440, 1, C.track);
             const t = number('temperature', 0);
-            row(cv, 335, 'Exhaust temperature (reading)', demo ? '312 °C' : t === '--' ? '--' : t + ' °C');
+            row(cv, 335, 'Exhaust temperature (reading)', t === '--' ? '--' : t + ' °C');
             cv.fillRect(70, 360, 1440, 1, C.track);
             const d = number('distance', 1);
-            row(cv, 427, 'Distance since last regen', demo ? '287 km' : d === '--' ? '--' : d + ' km');
-            if (demo) footer(cv, true);
-            else if (latest('ash') === null && latest('temperature') === null)
+            row(cv, 427, 'Distance since last regen', d === '--' ? '--' : d + ' km');
+            if (latest('ash') === null && latest('temperature') === null)
                 label(cv, statusText().slice(0, 86), 50, 490, 19, C.dim);
         }
         function render() {
             const cv = ctx.canvas(W, H).clear(C.bg);
-            const demo = settings.get('demo') === 'on';
-            heading(cv, demo);
-            if (page === 0) live(cv, demo);
-            else regeneration(cv, demo);
+            heading(cv);
+            if (page === 0) live(cv);
+            else regeneration(cv);
             G.frame(cv, ctx.theme(), ['Live', 'Regeneration'], page, []);
             return ui.image('MAIN_GFX', cv);
         }

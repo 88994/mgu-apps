@@ -1,10 +1,10 @@
-# DPF Monitor 0.2.4 — BMW G21 B47 / D83BX7C0
+# DPF Monitor 0.2.6 — BMW G21 B47 / D83BX7C0
 
 Read-only iDrive 7 DPF monitor built with the `cauliflowermossgrape/idrive7-apps` kit and installable through MGU Store.
 
 ## Verification and localization
 
-The eight configured DIDs were rechecked against the uploaded original `D83BX7C0.prg`: IDs, result types, raw byte counts, scaling and UDS `0x22` availability all match the `SG_FUNKTIONEN` table. UI text, statuses, demo labels and number formatting are now in English (decimal point).
+The configured DIDs were checked offline against the uploaded `D83BX7C0.prg`: result types, byte counts and scaling come from the `SG_FUNKTIONEN` table. UI text and numeric formatting are in English.
 
 Offline navigation regression test (no car, no SDK):
 
@@ -18,17 +18,16 @@ node tests/g21_car_ui_smoke.test.js
 
 The owner-supplied `D83BX7C0.prg` (BMW DDE / B47) was inspected offline. Its `SG_FUNKTIONEN` table gives UDS service `0x22` DIDs, result types and scaling for soot mass, ash mass, exhaust differential pressure, DPF temperature, distance since last successful regeneration, successful regeneration count and average regeneration interval.
 
-The app contains those exact DID configurations in `dpf-dids.js` and attempts read-only reads through `kit/diag.js` + `kit/dids.js` **only when explicitly enabled**.
+The app contains those DID configurations in `dpf-dids.js` and automatically attempts read-only reads through `kit/diag.js` + `kit/dids.js` when its screen is visible.
 
-**Important:** No response has yet been verified against this particular vehicle. The app is experimental. All DPF live readings are `--` by default.
+**Important:** Current in-car screenshots show `No usable DDE response (soot: no reply)`. Actual scaling and successful response routing have not yet been verified with this vehicle. A genuine absent value is shown as `--`, never replaced by test data.
 
 ## Settings and behavior
 
-- **DDE live diagnostics (experimental): Off** is the safe default. Switch to On for a supervised stationary-car read test after making a backup of existing diagnostic logs.
-- While On, the app sends only UDS `0x22` `ReadDataByIdentifier` requests to candidate engine ECU address `0x12`. Reads are sequential; the polling sequence runs only while the main app screen is visible. No diagnostic requests are issued in demo mode.
-- **Simulated DPF data: On** enables artificial example readings marked `DEMO`. This is unrelated to real sensor readings.
+- The last two experimental settings are removed. Live requests cannot be disabled and artificial DPF data are not generated.
+- The app sends UDS `0x22` `ReadDataByIdentifier` requests to candidate DDE address `0x12`. Reads are sequential; polling runs while the screen is visible. If the candidate address is silent, one read-only functional engine-speed request (`01 0C`) tries to locate the engine ECU address.
 - **Live page**: soot, differential pressure, exhaust temperature, distance since last completed regeneration. **Regeneration page**: lifetime oil-ash load, temperature and distance. There is no event-history tab because event timestamps cannot yet be determined reliably.
-- When the experimental toggle is Off, real readings and raw status values are hidden. Stale readings older than 45 seconds are also hidden.
+- Stale readings older than 45 seconds are hidden. When the DDE is silent, the status explains the unanswered request instead of displaying fabricated measurements.
 
 ## What is not yet implemented
 
@@ -49,8 +48,8 @@ py .\kit\tools\build.py dpf_monitor
 node .\kit\tools\emu.js dpf_monitor
 ```
 
-Open `http://localhost:8077/`. Set **Simulated DPF data** to On to inspect both pages. The emulator does not have a DDE transport and cannot verify real DIDs.
+Open `http://localhost:8077/`. The emulator lacks a DDE transport, so it cannot show live measurements or verify real DIDs.
 
-For in-car verification, leave the experimental DDE toggle Off until the vehicle is stationary and you are ready to compare against ISTA / Tool32. Avoid running this alongside ECU programming.
+For in-car verification, test with ignition on and the DDE awake, then compare values against ISTA / Tool32. Avoid running this alongside ECU programming.
 
 Do not commit the binary PRG file, BMW SDK, private keys, VIN or vehicle-specific logs.

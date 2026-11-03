@@ -2,7 +2,7 @@
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
   "description": "Outdoor-temperature-based steering wheel and seat heating with explicit opt-in and protected BDC commands",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
@@ -28,7 +28,7 @@
                 ["BTN_SETTINGS", "Settings"]]
   }],
   "settings": [
-    {"key": "autoEnabled", "label": "Automatic heating on cold startup", "type": "bool", "reset": "single-consent-0.4.5", "default": false},
+    {"key": "autoEnabled", "label": "Automatic heating on cold startup", "type": "bool", "default": false},
     {"key": "belowTemp", "label": "Start at or below", "type": "number", "unit": "°C", "default": 8,
       "steps": [-10, -5, 0, 2, 5, 8, 10, 12, 15, 18, 20]},
     {"key": "wheelAuto", "label": "Steering wheel heating", "type": "bool", "default": true},

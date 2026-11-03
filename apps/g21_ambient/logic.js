@@ -3,9 +3,10 @@
 // RAM01.prg, SG_FUNKTIONEN LIN_RGB_MODULE, DID 0xE311, service 2E;22.
 const ECU = 0x37;
 const DID = 0xE311;
-// RAM01: LIN_AKTIV is the independent, read-only 0x22 E310 preflight.
-// This car rejects 0x22 E311 with NRC 31 despite PRG listing both 22/2E.
-const PROBE_DID = 0xE310;
+// The car rejects both E310 and E311 reads with NRC 31. Standard 22 F150
+// identifies an ECU by numeric SGBD index; it does not return "RAM01" text.
+// Until that index is mapped to the uploaded RAM01 PRG, writes stay blocked.
+const PROBE_DID = 0xF150;
 const COLORS = Object.freeze([
     { name: 'Warm white', rgb: [254, 155, 65], on: 1 },
     { name: 'Blue', rgb: [0, 90, 254], on: 1 },

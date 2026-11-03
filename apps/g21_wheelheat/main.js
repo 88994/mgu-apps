@@ -63,9 +63,8 @@ mgu.run({
             seatLevel: Number(ctx.settings.get('seatLevel')),
             seatMins: Number(ctx.settings.get('seatMins')),
         });
-        // The one visible automatic-heating switch is also explicit consent
-        // for guarded control. A versioned one-time reset prevents silently
-        // converting a previously enabled preview into live heating on upgrade.
+        // The one visible automatic-heating switch is explicit consent for
+        // guarded control. Preserve its saved value across app updates.
         const permitted = () => ctx.settings.get('autoEnabled') === true;
         const tempReading = now => B.temperatureInput(outside.value, outside.at, false, null, now);
 

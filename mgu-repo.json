@@ -5,7 +5,7 @@
       "id": "dpf_monitor",
       "kind": "app",
       "title": "DPF Monitor",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "path": "apps/dpf_monitor",
       "icon": "icon.png",
       "mguHmi": [
@@ -28,7 +28,7 @@
       "id": "g21_ambient",
       "kind": "app",
       "title": "G21 Ambient",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "path": "apps/g21_ambient",
       "icon": "icon.png",
       "mguHmi": [
@@ -51,7 +51,7 @@
       "id": "g21_wheelheat",
       "kind": "app",
       "title": "G21 Heating Comfort",
-      "version": "0.4.6",
+      "version": "0.4.7",
       "path": "apps/g21_wheelheat",
       "icon": "icon.png",
       "mguHmi": [

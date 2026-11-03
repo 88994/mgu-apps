@@ -8,11 +8,12 @@ const app = require('../apps/g21_wheelheat/app.json');
 const main = fs.readFileSync(path.join(__dirname, '../apps/g21_wheelheat/main.js'), 'utf8');
 
 test('WheelHeat autostart uses a single explicit opt-in and honest diagnostic states', () => {
-    assert.equal(app.version, '0.4.6');
+    assert.equal(app.version, '0.4.7');
     assert.equal(app.mguAppStartType, 'autostart');
     assert(!app.settings.some(s => s.key === 'liveControl'));
     assert.equal(app.settings.find(s => s.key === 'autoEnabled').default, false);
-    assert.equal(app.settings.find(s => s.key === 'autoEnabled').reset, 'single-consent-0.4.5');
+    assert(!('reset' in app.settings.find(s => s.key === 'autoEnabled')),
+        'updates must preserve the previously saved consent');
     assert.match(main, /ctl\.autoWrite\(data/);
     assert.match(main, /HEATER STATUS SNAPSHOT/);
     assert(!main.includes('One automatic cycle'));

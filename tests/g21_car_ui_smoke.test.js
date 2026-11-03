@@ -14,7 +14,9 @@ const wheel = source('g21_wheelheat');
 const dpf = source('dpf_monitor');
 
 assert.match(dpf, /ctx\.onTab\(\(index\)/, 'DPF pages must receive header tab taps');
-assert.equal(spec('dpf_monitor').settings.find(s => s.key === 'dde_live').default, 'on');
+assert(!spec('dpf_monitor').settings.some(s => s.key === 'dde_live' || s.key === 'demo'),
+    'DPF must always read real data and hide both test settings');
+assert(!dpf.includes("settings.get('demo')"), 'DPF must never show synthetic readings');
 assert.deepStrictEqual([...ambient.matchAll(/const TABS = \[([^\]]+)\]/g)].map(m => m[1]),
     ["'Color', 'Diagnostics'"], 'only one native Settings tab in Ambient');
 assert.deepStrictEqual([...wheel.matchAll(/const TABS = \[([^\]]+)\]/g)].map(m => m[1]),
@@ -30,8 +32,8 @@ assert(!spec('g21_wheelheat').settings.some(s => s.key === 'liveControl'),
 assert(!spec('g21_wheelheat').settings.some(s => s.key === 'engineeringWrites'),
     'legacy manual-write opt-in must not enable new automation');
 assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').default, false);
-assert.equal(spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled').reset,
-    'single-consent-0.4.5', 'migration must require fresh opt-in');
+assert(!('reset' in spec('g21_wheelheat').settings.find(s => s.key === 'autoEnabled')),
+    'stored startup consent must survive updates');
 assert.match(wheel, /ctl\.autoWrite\(data/, 'guarded live BDC command path present');
 assert.match(wheel, /ctl\.parked/, 'standstill guard present');
 assert.match(wheel, /ctl\.readbacks\[did\]/, 'BDC diagnostics must use actual ECU readbacks');

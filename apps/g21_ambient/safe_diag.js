@@ -16,7 +16,7 @@ class SafeDiag {
         this.readText = 'not read yet';
         this.info = 'Select a color, then press APPLY twice while stationary.';
         this.lastReadDid = null;
-        this.linActive = null;
+        this.identity = null;
         this.lastWriteOk = null;
         this.pending = null;
         this.busy = false;
@@ -56,22 +56,24 @@ class SafeDiag {
             const u = await this.diag.physical(this.target, 0x22, data, 2300, replyTo(0x22, data), { maxRetries: 0 });
             if (u && u[0] === 0x62 && u[1] === data[0] && u[2] === data[1]) {
                 if (did === this.probeDid) {
-                    this.readAt = Date.now();
-                    this.linActive = u.length > 3 && (u[3] === 0 || u[3] === 1) ? u[3] : null;
+                    // BMW IDENT / 22 F150 returns 3-byte SGBD index, not
+                    // ASCII SGBD name. No index-to-RAM01 map is verified yet.
+                    this.identity = u.length >= 6 ? bytes(u.slice(3, 6)) : 'short reply';
+                    this.readAt = 0;
                 }
                 this.lastReadDid = did;
                 this.readText = bytes(u);
                 this.info = 'RAM read 0x' + hex(did, 4) + ' OK' +
-                    (did === this.probeDid && this.linActive !== null
-                        ? ' (LIN ' + (this.linActive ? 'active' : 'inactive') + ')' : '');
+                    (did === this.probeDid ? ' (SGBD index ' + this.identity +
+                        '; variant not yet verified, write blocked)' : '');
             } else {
-                if (did === this.probeDid) this.readAt = 0;
+                if (did === this.probeDid) { this.readAt = 0; this.identity = null; }
                 this.lastReadDid = did;
                 this.readText = u ? bytes(u) : 'Timeout';
                 this.info = errorFor(u);
             }
         } catch (e) {
-            if (did === this.probeDid) this.readAt = 0;
+            if (did === this.probeDid) { this.readAt = 0; this.identity = null; }
             this.lastReadDid = did;
             this.info = 'Read error: ' + String(e.message || e);
         }
