@@ -34,5 +34,34 @@ function temperatureInput(realValue, realAt, simulationEnabled, simulationC, now
     }
     return { value: realValue, at: realAt, source: 'MGU' };
 }
+/** BDC_G05.prg RES_0xD074_D: ON, LED, current in 0.1 A,
+ * actuator state, coded flag. Byte positions refer to the payload following
+ * UDS 62 D0 74. Unknown/truncated values are never guessed as OFF. */
+function decodeWheelReadback(payload) {
+    if (!Array.isArray(payload) || payload.length < 2 ||
+        (payload[0] !== 0 && payload[0] !== 1) ||
+        (payload[1] !== 0 && payload[1] !== 1)) return null;
+    return { on: payload[0] === 1, led: payload[1] === 1,
+        currentAmps: payload.length > 2 ? payload[2] / 10 : null,
+        actuator: payload.length > 3 ? payload[3] : null,
+        coded: payload.length > 4 ? payload[4] === 1 : null };
+}
+/** BDC_G05.prg RES_0xE432_D / RES_0xE430_D:
+ * status, level, seat cushion/back temperatures, reduction, emergency,
+ * timeout, two reserved bytes. */
+function decodeSeatReadback(payload) {
+    if (!Array.isArray(payload) || payload.length < 2 ||
+        (payload[0] !== 0 && payload[0] !== 1) ||
+        ![0, 1, 2, 3].includes(payload[1])) return null;
+    const signed = n => n > 127 ? n - 256 : n;
+    const temp = n => n === 87 ? null : signed(n);
+    return { on: payload[0] === 1, level: payload[1],
+        cushionC: payload.length > 2 ? temp(payload[2]) : null,
+        backC: payload.length > 3 ? temp(payload[3]) : null,
+        consumptionReduced: payload.length > 4 ? payload[4] === 1 : null,
+        emergency: payload.length > 5 ? payload[5] === 1 : null,
+        timedOut: payload.length > 6 ? payload[6] === 1 : null };
+}
 module.exports = { ECU, DID_HEAT, DID_LED, DID_SEAT_DRIVER, DID_SEAT_PASSENGER,
-    TIMES, heating, led, seat, exteriorTemp, temperatureInput };
+    TIMES, heating, led, seat, exteriorTemp, temperatureInput,
+    decodeWheelReadback, decodeSeatReadback };

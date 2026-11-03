@@ -1,23 +1,74 @@
 {
   "schema": 1,
-  "apps": {
-    "path": "apps/*",
-    "manifest": "app.json",
-    "icon": "icon.png",
-    "mguHmi": [
-      "ID7"
-    ],
-    "requires": {
-      "idrive7-renderd": "2.1.6",
-      "mgu-inputgate": "1.0.0"
-    },
-    "build": {
-      "python": "tools/build_store_app.py",
-      "args": [
-        "{id}"
+  "components": [
+    {
+      "id": "dpf_monitor",
+      "kind": "app",
+      "title": "DPF Monitor",
+      "version": "0.2.5",
+      "path": "apps/dpf_monitor",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
       ],
-      "sdk": "oap-sdk",
-      "output": "dist/{id}@{version}.tgz"
+      "requires": {
+        "idrive7-renderd": "2.1.6",
+        "mgu-inputgate": "1.0.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
+    },
+    {
+      "id": "g21_ambient",
+      "kind": "app",
+      "title": "G21 Ambient",
+      "version": "0.3.7",
+      "path": "apps/g21_ambient",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "idrive7-renderd": "2.1.6",
+        "mgu-inputgate": "1.0.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
+    },
+    {
+      "id": "g21_wheelheat",
+      "kind": "app",
+      "title": "G21 Heating Comfort",
+      "version": "0.4.6",
+      "path": "apps/g21_wheelheat",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "idrive7-renderd": "2.1.6",
+        "mgu-inputgate": "1.0.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
     }
-  }
+  ]
 }

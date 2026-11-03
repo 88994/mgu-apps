@@ -2,8 +2,8 @@
 
 const { Diag, hex, NRC, replyTo } = require('./kit/diag');
 
-// Experimental writes are OFF by default (app.json). No write without fresh,
-// physically read speed=0, a successful 0x22 status read and two user presses.
+// Never write without a fresh read-only RAM probe, confirmed standstill and
+// two deliberate presses. The settings no longer contain an additional opt-in.
 class SafeDiag {
     constructor(ctx, target, probeDid) {
         this.ctx = ctx;
@@ -14,7 +14,10 @@ class SafeDiag {
         this.speedAt = 0;
         this.readAt = 0;
         this.readText = 'not read yet';
-        this.info = 'Offline preview. Writes disabled by default.';
+        this.info = 'Select a color, then press APPLY twice while stationary.';
+        this.lastReadDid = null;
+        this.linActive = null;
+        this.lastWriteOk = null;
         this.pending = null;
         this.busy = false;
         this.lastWriteAt = 0;
@@ -36,7 +39,6 @@ class SafeDiag {
     get parked() { return this.speed !== null && this.speed <= 0.5 && Date.now() - this.speedAt < 5000; }
     get verified() { return this.readAt > 0 && Date.now() - this.readAt < 60000; }
     get writeReady() {
-        if (this.ctx.settings.get('engineeringWrites') !== true) return 'Writes disabled in Settings';
         if (!this.online) return 'TASU/ECU unavailable';
         if (!this.verified) return 'Read status first (max. 60s)';
         if (!this.parked) return 'Vehicle standstill not confirmed';
@@ -53,15 +55,26 @@ class SafeDiag {
         try {
             const u = await this.diag.physical(this.target, 0x22, data, 2300, replyTo(0x22, data), { maxRetries: 0 });
             if (u && u[0] === 0x62 && u[1] === data[0] && u[2] === data[1]) {
-                if (did === this.probeDid) this.readAt = Date.now();
+                if (did === this.probeDid) {
+                    this.readAt = Date.now();
+                    this.linActive = u.length > 3 && (u[3] === 0 || u[3] === 1) ? u[3] : null;
+                }
+                this.lastReadDid = did;
                 this.readText = bytes(u);
-                this.info = 'Read OK: 0x' + hex(did, 4) + ' (raw reply)';
+                this.info = 'RAM read 0x' + hex(did, 4) + ' OK' +
+                    (did === this.probeDid && this.linActive !== null
+                        ? ' (LIN ' + (this.linActive ? 'active' : 'inactive') + ')' : '');
             } else {
-                this.readAt = 0;
+                if (did === this.probeDid) this.readAt = 0;
+                this.lastReadDid = did;
                 this.readText = u ? bytes(u) : 'Timeout';
                 this.info = errorFor(u);
             }
-        } catch (e) { this.readAt = 0; this.info = 'Read error: ' + String(e.message || e); }
+        } catch (e) {
+            if (did === this.probeDid) this.readAt = 0;
+            this.lastReadDid = did;
+            this.info = 'Read error: ' + String(e.message || e);
+        }
         finally { this.busy = false; }
     }
     /** Only an explicitly confirmed user action reaches TASU 0x2E. */
@@ -81,10 +94,11 @@ class SafeDiag {
             const u = await this.diag.physical(this.target, 0x2E, data, 2300, replyTo(0x2E, data), { maxRetries: 0 });
             if (u && u[0] === 0x6E && u[1] === data[0] && u[2] === data[1]) {
                 this.info = 'ECU acknowledged 0x2E; vehicle effect UNVERIFIED';
+                this.lastWriteOk = true;
                 this.lastWriteAt = Date.now();
                 this.readAt = 0; // require a fresh 0x22 read for any further write
-            } else this.info = errorFor(u);
-        } catch (e) { this.info = 'Write error: ' + String(e.message || e); }
+            } else { this.lastWriteOk = false; this.info = errorFor(u); }
+        } catch (e) { this.lastWriteOk = false; this.info = 'Write error: ' + String(e.message || e); }
         finally { this.busy = false; }
     }
 }

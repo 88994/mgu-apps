@@ -58,7 +58,7 @@ function drawBrightnessSlider(cv, t, value) {
 
 mgu.run({
     async start(ctx) {
-        const ctl = new SafeDiag(ctx, A.ECU, A.DID);
+        const ctl = new SafeDiag(ctx, A.ECU, A.PROBE_DID);
         let tab = 0, rgbChannel = 0;
         let touchedSlider = null;
         let lastDragUpdate = 0;
@@ -67,7 +67,14 @@ mgu.run({
         // Settings from 0.3.0 may still contain the removed local lilac mode.
         if (ctx.settings.get('colorMode') === 'saved') ctx.settings.set('colorMode', 'preset');
         if (ctx.settings.get('presetColor') === '6') ctx.settings.set('presetColor', '0');
-        const setTab = i => { if (Number.isInteger(i) && i >= 0 && i < TABS.length) tab = i; };
+        const setTab = i => {
+            if (Number.isInteger(i) && i >= 0 && i < TABS.length) {
+                tab = i;
+                if (tab === 1) ctl.read(A.PROBE_DID).catch(e => {
+                    ctl.info = 'RAM status read: ' + e.message;
+                });
+            }
+        };
         const mode = () => ctx.settings.get('colorMode');
         const selected = () => mode() === 'custom'
             ? A.exactColor(RGB_SLIDERS.map(s => Number(ctx.settings.get(s.key))))
@@ -133,26 +140,19 @@ mgu.run({
                 return;
             }
             plan = null;
-            if (ctx.settings.get('engineeringWrites') !== true) {
-                actionNotice = 'Live LIN locked: enable it in Settings.';
-                return;
-            }
             if (!ctl.online) {
                 actionNotice = 'No connection to RAM / TASU. No command sent.';
                 return;
             }
             if (!ctl.verified) {
-                actionNotice = 'STEP 1/3: Reading ECU 22 E311 ...';
-                await ctl.read(A.DID);
-                actionNotice = ctl.verified ? 'ECU ready. Tap APPLY again to arm the change.' :
-                    /NRC 0x31/.test(ctl.info)
-                        ? 'ECU rejected Read 22 E311 (NRC 31). Confirm RAM PRG / DID.'
-                        : ctl.info;
-            } else {
-                actionNotice = ctl.pending ? 'STEP 3/3: Sending confirmed color ...' : 'STEP 2/3: Arming color command ...';
-                await ctl.write(raw(), 'RAM-LIN RGB #' + rgbHex(selected().rgb));
-                actionNotice = ctl.info;
+                // The previous E311 preflight was rejected with NRC 31.
+                // RAM01 documents E310 as an independent, read-only LIN status.
+                actionNotice = 'Checking RAM LIN status (22 E310) ...';
+                await ctl.read(A.PROBE_DID);
+                if (!ctl.verified) { actionNotice = ctl.info; return; }
             }
+            await ctl.write(raw(), 'RAM-LIN RGB #' + rgbHex(selected().rgb));
+            actionNotice = ctl.info;
         };
         ctx.ui.onClick('BTN_PAGE', () => setTab((tab + 1) % TABS.length));
         ctx.ui.onClick('BTN_MODE', () => {
@@ -184,12 +184,8 @@ mgu.run({
         ctx.ui.onClick('BTN_BRIGHT_UP', () => { if (tab === 0) setBrightness(Number(ctx.settings.get('brightness')) + 1); });
         ctx.ui.onClick('BTN_ACTION', () => {
             if (tab === 0) { applyChoice().catch(e => { actionNotice = 'Apply error: ' + e.message; }); return; }
-            // Diagnostics only: first press reads. Manual writes remain behind SafeDiag gates.
-            if (!ctl.verified) ctl.read(A.DID);
-            else {
-                try { ctl.write(raw(), 'RGB ' + selected().name); }
-                catch (e) { ctl.info = 'Invalid PRG value: ' + e.message; }
-            }
+            // Diagnostics is strictly read-only; writes belong to Color / APPLY.
+            ctl.read(A.PROBE_DID).catch(e => { ctl.info = 'Read error: ' + e.message; });
         });
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
         const moveSlider = (kind, x, y) => {
@@ -286,9 +282,7 @@ mgu.run({
             const hex = rgbHex(color.rgb);
             const closest = A.rgbToGrid(color.rgb);
             const target = ctx.settings.get('applyTarget');
-            const badge = target === 'slot11' ? 'FDL-PLAN / OFFLINE' :
-                ctx.settings.get('engineeringWrites') === true ? 'LIN TEST ENABLED' : 'LIN TEST LOCKED';
-            G.frame(cv, t, TABS, tab, [{ text: badge, color: t.dim }]);
+            G.frame(cv, t, TABS, tab, []);
             if (tab === 0) {
                 G.panel(cv, t, 24, 62, 701, 445, 'Color picker / RGB sliders');
                 text(cv, 'Choose a color or adjust precise RGB values', 56, 119, 21, t.text);
@@ -306,7 +300,7 @@ mgu.run({
                 text(cv, 'RGB ' + color.rgb.join(' / ') + '   |   Brightness ' +
                     brightness + ' %', 785, 315, 23, t.accent);
                 text(cv, 'Apply mode: ' + (target === 'temporary' ?
-                    'TEMPORARY / LIN TEST' : 'IDRIVE SLOT 11 / FDL PLAN'), 785, 342, 20, t.text);
+                    'TEMPORARY COLOR' : 'IDRIVE SLOT 11 / FDL PLAN'), 785, 342, 20, t.text);
                 const choice = (x, w, label, active) => {
                     cv.fillRect(x, 356, w, 42, active ? '#23475b' : '#1d2632');
                     text(cv, label, x + 14, 385, 21, active ? t.accent : t.text);
@@ -322,29 +316,39 @@ mgu.run({
                 text(cv, actionNotice.slice(0, 72), 785, 466, 18, t.warn);
                 text(cv, target === 'slot11'
                     ? 'Slot 11: prepare the FDL plan; no ECU coding is sent.'
-                    : !ctl.verified ? 'Apply: read ECU -> arm -> confirm (parked only).'
+                    : !ctl.verified ? 'Apply: check RAM -> arm -> confirm (parked only).'
                         : ctl.pending ? 'Ready to send: tap APPLY again within 8 seconds.'
                             : 'ECU ready: tap APPLY to arm, then confirm.',
                     785, 497, 18, t.dim);
             } else {
-                G.panel(cv, t, 24, 62, 761, 445, 'RAM01 / Diagnostics');
-                text(cv, 'Control unit   RAM  |  Address 0x37', 56, 142, 26, t.text);
-                text(cv, 'DID 0xE311    UDS 22 / 2E', 56, 190, 25, t.text);
-                text(cv, '2E  ' + bytes(raw()), 56, 260, 32, t.accent, { font: 'num' });
-                text(cv, 'ID   ON   BRIGHT   R   G   B   TIME', 56, 305, 21, t.dim);
-                text(cv, 'Diagnostics button: read status 22 first', 56, 388, 22, t.text);
-                text(cv, 'Writing requires manual safety approval', 56, 450, 20, t.warn);
-                G.panel(cv, t, 805, 62, 771, 445, 'Connection / Safety');
-                text(cv, 'ECU: ' + (ctl.online ? 'TASU ready' : 'offline'), 835, 143, 27, t.text);
-                text(cv, 'Speed: ' + (ctl.speed === null ? 'not available' : ctl.speed.toFixed(1) + ' km/h'), 835, 195, 23, t.text);
-                text(cv, 'Status 22: ' + ctl.readText.slice(0, 43), 835, 248, 20, t.dim);
-                text(cv, 'Approval: ' + (ctl.writeReady || 'not approved').slice(0, 36), 835, 303, 22, t.warn);
-                text(cv, ctl.info.slice(0, 54), 835, 376, 20, t.text);
-                text(cv, plan ? (plan.kind === 'restore'
-                    ? 'Slot 11 FACTORY PLAN: 05 00, RGB 78 3C FE'
-                    : 'Slot 11 REQUESTED COLOR: #' + rgbHex(plan.result.desiredRGB)) :
-                    'Slot 11: no FDL plan requested', 835, 422, 19, t.text);
-                text(cv, 'FDL / CAFD writing not available', 835, 470, 21, t.warn);
+                G.panel(cv, t, 24, 62, 761, 445, 'RAM / Live diagnostics');
+                text(cv, 'Connection', 56, 145, 25, t.dim);
+                text(cv, ctl.online ? 'RAM gateway available' : 'RAM gateway unavailable',
+                    350, 145, 25, ctl.online ? t.accent : t.warn);
+                text(cv, 'LIN status (E310)', 56, 205, 25, t.dim);
+                text(cv, !ctl.verified ? 'Not confirmed' : ctl.linActive === null ? 'Reply received' :
+                    ctl.linActive ? 'LIN bus active' : 'LIN bus inactive',
+                350, 205, 25, ctl.verified ? t.accent : t.warn);
+                text(cv, 'Vehicle speed', 56, 265, 25, t.dim);
+                text(cv, ctl.speed === null ? 'Unavailable' : ctl.speed.toFixed(1) + ' km/h',
+                    350, 265, 25, t.text);
+                text(cv, 'Last ECU write', 56, 325, 25, t.dim);
+                text(cv, ctl.lastWriteOk === null ? 'Not requested' :
+                    ctl.lastWriteOk ? 'Acknowledged (not visually verified)' : 'Rejected',
+                350, 325, 23, ctl.lastWriteOk ? t.accent : t.warn);
+                text(cv, 'Press DIAGNOSTICS / ACTION to refresh read-only status.',
+                    56, 422, 22, t.text);
+                G.panel(cv, t, 805, 62, 771, 445, 'ECU response / LED target');
+                text(cv, 'RAM01  |  Address 0x37  |  Read 22 E310', 835, 142, 24, t.text);
+                text(cv, 'Readback: ' + ctl.readText.slice(0, 42), 835, 197, 23, t.dim);
+                text(cv, 'LED target: ' + (Number(ctx.settings.get('linId')) === 0 ?
+                    'All LIN RGB modules' : 'Module ' + ctx.settings.get('linId')),
+                835, 255, 25, t.text);
+                text(cv, 'Control duration: ' + ctx.settings.get('duration') + ' s',
+                    835, 307, 25, t.text);
+                text(cv, 'Last response: ' + ctl.info.slice(0, 43), 835, 377, 20, t.warn);
+                text(cv, 'Temporary output only; not iDrive slot 11 coding.',
+                    835, 449, 19, t.dim);
             }
             return ctx.ui.image('MAIN_GFX', cv);
         });

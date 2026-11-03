@@ -3,6 +3,9 @@
 // RAM01.prg, SG_FUNKTIONEN LIN_RGB_MODULE, DID 0xE311, service 2E;22.
 const ECU = 0x37;
 const DID = 0xE311;
+// RAM01: LIN_AKTIV is the independent, read-only 0x22 E310 preflight.
+// This car rejects 0x22 E311 with NRC 31 despite PRG listing both 22/2E.
+const PROBE_DID = 0xE310;
 const COLORS = Object.freeze([
     { name: 'Warm white', rgb: [254, 155, 65], on: 1 },
     { name: 'Blue', rgb: [0, 90, 254], on: 1 },
@@ -103,6 +106,6 @@ function fromPreset(preset, id, brightness, seconds) {
     return encode({ id, on: preset.on, brightness: preset.on ? brightness : 0,
         red: preset.rgb[0], green: preset.rgb[1], blue: preset.rgb[2], seconds });
 }
-module.exports = { ECU, DID, COLORS, BRIGHTNESS, HUES, SATURATIONS, hsvToRgb,
+module.exports = { ECU, DID, PROBE_DID, COLORS, BRIGHTNESS, HUES, SATURATIONS, hsvToRgb,
     chooseColor, pickerCell, exactColor, rgbToGrid, slot11Plan, slot11RestorePlan,
     ORIGINAL_PROFILES, ORIGINAL_LILAC_RGB, SLOT11_PROFILE_OFFSET, encode, fromPreset };

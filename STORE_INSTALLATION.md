@@ -2,7 +2,7 @@
 
 1. In MGU Store add the GitHub source `NamelsMissing/mgu-apps` (authenticate if the repository is private).
 2. Select **Branch → main**. Do not choose the historical `wheelheat-autostart-0.4.2-qa` branch.
-3. Refresh the source and update `dpf_monitor` 0.2.4, `g21_ambient` 0.3.6 and `g21_wheelheat` 0.4.5.
+3. Refresh the source and update `dpf_monitor` 0.2.5, `g21_ambient` 0.3.7 and `g21_wheelheat` 0.4.6.
 4. WheelHeat's installed package already includes `mguAppStartType: autostart`; there is no separate USB patch or second source branch required.
 5. Restart the MGU to test *process* autostart. Separately enable **Automatic heating on cold startup** in the app; the option resets to Off once on this upgrade.
 

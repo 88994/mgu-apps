@@ -110,9 +110,9 @@ mgu.run({
             return ok;
         }
 
-        // Read directly from BDC, independently of the planner and last 2E
-        // commands. Some IDs may be write-only. Report their NRC, not a made-up
-        // heating state. Raw DID bytes need verified PRG decode rules for ON/OFF.
+        // Read independently of the planner and the last 2E commands.
+        // BDC_G05.prg explicitly documents the 22 D074 / E432 / E430
+        // result fields and their byte order. Show only valid decoded states.
         async function refreshReadbacks() {
             if (statusBusy || busy || !ctl.online) return;
             statusBusy = true;
@@ -213,20 +213,26 @@ mgu.run({
                 G.panel(cv, t, 24, 62, 1552, 445, 'Actual BDC read-back (read-only)');
                 text(cv, 'ECU 0x40    Service 22    Refresh: Diagnostics / Action',
                     54, 138, 26, t.text);
-                const readRow = (label, did, y) => {
+                const readRow = (label, did, y, seat) => {
                     const entry = ctl.readbacks[did];
                     const stale = !entry || now - entry.at > 30000;
+                    const decoded = !stale && entry.ok ? (seat ?
+                        B.decodeSeatReadback(entry.payload) :
+                        B.decodeWheelReadback(entry.payload)) : null;
+                    const detail = !decoded ? stale ? 'NOT AVAILABLE' :
+                        entry.ok ? 'Unsupported reply format' : 'ECU read rejected' :
+                        seat ? decoded.on ? 'ON  |  Level ' + decoded.level : 'OFF' :
+                            decoded.on ? 'ON  |  Indicator ' + (decoded.led ? 'ON' : 'OFF') : 'OFF';
                     text(cv, label, 54, y, 25, t.text);
-                    text(cv, stale ? 'NOT AVAILABLE' : entry.ok
-                        ? 'ECU responded - state not yet decoded' : 'Status unavailable (read rejected)',
-                        665, y, 23, !stale && entry.ok ? t.accent : t.warn);
+                    text(cv, detail, 665, y, 23, decoded ?
+                        decoded.on ? t.accent : t.text : t.warn);
                 };
-                readRow('Steering wheel', B.DID_HEAT, 207);
-                readRow('Driver seat', B.DID_SEAT_DRIVER, 267);
-                readRow('Passenger seat', B.DID_SEAT_PASSENGER, 327);
+                readRow('Steering wheel', B.DID_HEAT, 207, false);
+                readRow('Driver seat', B.DID_SEAT_DRIVER, 267, true);
+                readRow('Passenger seat', B.DID_SEAT_PASSENGER, 327, true);
                 cv.fillRect(54, 354, 1450, 1, '#2e4052');
-                text(cv, 'Real ON/OFF decoding requires validated BDC status jobs.',
-                    54, 400, 24, t.warn);
+                text(cv, 'Actual heater status decoded from BDC_G05 ECU result fields.',
+                    54, 400, 24, t.accent);
                 text(cv, statusBusy ? 'Reading BDC ...' : 'Last ECU read: ' + (statusAt ?
                     Math.round((now - statusAt) / 1000) + 's ago' : 'not yet'), 54, 448, 22, t.dim);
                 text(cv, 'Outside sensor: ' + (outside.raw === null ? 'unavailable' :

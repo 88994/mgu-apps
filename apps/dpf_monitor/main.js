@@ -15,12 +15,18 @@ mgu.run({
     async start(ctx) {
         const { ui, settings, log } = ctx;
         let page = 0;
-        let visible = false, timer = null, busy = false;
+        // Start read-only polling even if an initial HMI Visible event was
+        // missed while the app was loading. Later hide events still stop it.
+        let visible = true, timer = null, busy = false;
         let diag = null, reader = null, diagState = 'Off';
         const values = Object.create(null);
         const reported = Object.create(null);
+        const reportedFailures = Object.create(null);
         const enabled = () => settings.get('dde_live') === 'on' && settings.get('demo') !== 'on';
         const allowed = () => visible && enabled();
+        const statusText = () => !enabled()
+            ? 'DDE reading is Off — enable it in Settings'
+            : 'DDE: ' + diagState;
         const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
         function latest(name) {
@@ -54,23 +60,31 @@ mgu.run({
                     return;
                 }
                 diagState = 'Reading DDE ...';
-                let good = 0;
+                let good = 0, firstFailure = '';
                 for (const field of READINGS) {
                     if (!allowed()) break;
                     const value = await reader.read(field.request);
+                    const raw = reader.raws[reader.key(field.request)];
                     if (value !== null && Number.isFinite(value)) {
                         values[field.name] = { value, at: Date.now() };
                         good++;
                         if (!reported[field.name]) {
-                            const raw = reader.raws[reader.key(field.request)];
                             log.info('DDE first response ' + field.name + ' DID ' +
                                 field.request.did + ': ' + (raw ? raw.bytes : 'unknown'));
                             reported[field.name] = true;
                         }
+                    } else if (raw && raw.why) {
+                        if (!firstFailure) firstFailure = field.name + ': ' + raw.why;
+                        if (!reportedFailures[field.name]) {
+                            log.warn('DDE read ' + field.name + ' DID ' +
+                                field.request.did + ': ' + raw.why);
+                            reportedFailures[field.name] = true;
+                        }
                     }
                     await pause(180); // one request at a time; avoid stressing gateway
                 }
-                diagState = good ? 'DDE readings received' : 'No DDE response';
+                diagState = good ? 'Data received' :
+                    'No usable DDE response' + (firstFailure ? ' (' + firstFailure + ')' : '');
                 if (!good) log.warn('DDE D83BX7C0: no usable replies');
             } catch (err) {
                 diagState = 'Diagnostic error';
@@ -86,6 +100,9 @@ mgu.run({
             if (on) schedule(0);
             else if (timer !== null) { clearTimeout(timer); timer = null; }
         });
+        // A Renderd-backed page may already be visible before its callback is
+        // registered. The first polling attempt must not depend on it.
+        schedule(1500);
         settings.onChange((key) => {
             if (key !== 'dde_live' && key !== 'demo') return;
             if (!enabled()) {
@@ -140,6 +157,8 @@ mgu.run({
             tile(cv, 43, 290, 'Exhaust temperature', demo ? '312' : number('temperature', 0), '°C');
             tile(cv, 821, 290, 'Since last regen', demo ? '287' : number('distance', 1), 'km');
             if (demo) footer(cv, true);
+            else if (latest('soot') === null && latest('pressure') === null)
+                label(cv, statusText().slice(0, 86), 50, 490, 19, C.dim);
         }
         function row(cv, y, left, right) {
             label(cv, left, 73, y, 28, C.dim);
@@ -157,6 +176,8 @@ mgu.run({
             const d = number('distance', 1);
             row(cv, 427, 'Distance since last regen', demo ? '287 km' : d === '--' ? '--' : d + ' km');
             if (demo) footer(cv, true);
+            else if (latest('ash') === null && latest('temperature') === null)
+                label(cv, statusText().slice(0, 86), 50, 490, 19, C.dim);
         }
         function render() {
             const cv = ctx.canvas(W, H).clear(C.bg);

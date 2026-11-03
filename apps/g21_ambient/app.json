@@ -2,7 +2,7 @@
   "id": "g21_ambient",
   "title": "G21 Ambient Lighting",
   "description": "RGB color picker, temporary LIN test and safe iDrive slot 11 FDL preparation (no automatic FDL writing)",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB1",
   "iconGlyph": "RGB",
@@ -34,8 +34,7 @@
     {"key": "customBlue", "label": "RGB blue", "hidden": true, "type": "number", "default": 254, "steps": [0, 16, 32, 48, 64, 80, 96, 112, 128, 144, 160, 176, 192, 208, 224, 240, 254]},
     {"key": "applyTarget", "label": "Apply mode", "hidden": true, "type": "choice", "default": "temporary", "options": [["temporary", "Temporary LIN test"], ["slot11", "iDrive menu slot 11 (FDL plan)"]]},
     {"key": "brightness", "label": "Brightness", "hidden": true, "type": "number", "unit": "%", "default": 50, "steps": [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]},
-    {"key": "linId", "label": "LIN RGB module (0 = all)", "type": "number", "default": 1, "steps": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]},
-    {"key": "duration", "label": "Control duration", "type": "number", "unit": "s", "default": 5, "steps": [1, 2, 5, 10, 20, 30, 60, 120, 254]},
-    {"key": "engineeringWrites", "label": "Permit temporary LIN control (unverified)", "type": "bool", "default": false}
+    {"key": "linId", "label": "LED module target (0 = all)", "type": "number", "default": 0, "steps": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]},
+    {"key": "duration", "label": "Control duration", "type": "number", "unit": "s", "default": 5, "steps": [1, 2, 5, 10, 20, 30, 60, 120, 254]}
   ]
 }
