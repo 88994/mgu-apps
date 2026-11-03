@@ -2,7 +2,7 @@
   "id": "dpf_monitor",
   "title": "DPF Monitor",
   "description": "Live, read-only DDE DPF measurements with persistent real-reading history",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "vendor": "custom",
   "loggingId": "OA9D",
   "iconGlyph": "DPF",

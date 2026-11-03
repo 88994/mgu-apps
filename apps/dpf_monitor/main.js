@@ -22,6 +22,7 @@ mgu.run({
         let visible = true, timer = null, busy = false;
         let diag = null, reader = null, diagState = 'Connecting';
         let identityChecked = false;
+        let pollRound = 0;
         const values = Object.create(null);
         // Real measurements only. No regeneration events are fabricated from
         // soot mass or distance alone. Retain a small chronological sample log.
@@ -57,7 +58,8 @@ mgu.run({
 
         function latest(name) {
             const item = values[name];
-            return item && Date.now() - item.at < 45000 ? item.value : null;
+            return item && Date.now() - item.at <
+                (READINGS.find(x => x.name === name && x.tier === 'secondary') ? 180000 : 50000) ? item.value : null;
         }
         function number(name, digits) {
             const value = latest(name);
@@ -86,7 +88,10 @@ mgu.run({
                 }
                 diagState = 'Reading DDE ...';
                 let good = 0, firstFailure = '';
+                const secondarySlot = (++pollRound % 3);
+                let secondaryIndex = 0;
                 for (const field of READINGS) {
+                    if (field.tier === 'secondary' && (secondaryIndex++ % 3) !== secondarySlot) continue;
                     if (!allowed()) break;
                     const value = await reader.read(field.request);
                     const raw = reader.raws[reader.key(field.request)];
@@ -168,11 +173,11 @@ mgu.run({
         }, log).then((sub) => {
             if (sub.error) log.warn('DPF CBS unavailable: ' + sub.error);
         }).catch((err) => log.warn('DPF CBS subscription: ' + err));
-        ui.onClick('BTN_PAGE', () => { page = (page + 1) % 2; });
+        ui.onClick('BTN_PAGE', () => { page = (page + 1) % 4; });
         // Header tabs are drawn by G.frame. The renderer only routes their taps
         // when an onTab handler exists; without it they look active but do nothing.
         if (typeof ctx.onTab === 'function') ctx.onTab((index) => {
-            if (Number.isInteger(index) && index >= 0 && index < 2) page = index;
+            if (Number.isInteger(index) && index >= 0 && index < 4) page = index;
         });
 
         function card(cv, x, y, w, h, colour) {
@@ -198,41 +203,81 @@ mgu.run({
             if (latest('soot') === null && latest('pressure') === null)
                 label(cv, statusText().slice(0, 86), 50, 490, 19, C.dim);
         }
-        function row(cv, y, left, right) {
-            label(cv, left, 73, y, 28, C.dim);
-            label(cv, right, 1510, y, 28, C.text, { align: 'right', font: 'bold' });
+        function detailLine(cv, x, y, caption, reading, unit) {
+            label(cv, caption, x + 24, y, 22, C.dim);
+            label(cv, reading === '--' ? '--' : reading + (unit ? ' ' + unit : ''),
+                x + 705, y, 26, C.text, { align: 'right', font: 'bold' });
+            if (y < 395) cv.fillRect(x + 24, y + 12, 684, 1, C.track);
+        }
+        // Fast overview on the first tab; the supporting PRG values are
+        // grouped separately so a driver does not have to read a raw list.
+        function details(cv) {
+            card(cv, 43, 112, 736, 350);
+            card(cv, 821, 112, 736, 350);
+            label(cv, 'FILTER LOADING', 73, 152, 25, C.text, { font: 'bold' });
+            label(cv, 'SENSORS / PRESSURE', 851, 152, 25, C.text, { font: 'bold' });
+            detailLine(cv, 43, 211, 'Soot calculated', number('soot', 1), 'g');
+            detailLine(cv, 43, 274, 'Soot measured', number('sootMeasured', 1), 'g');
+            detailLine(cv, 43, 337, 'Soot model', number('sootModel', 1), 'g');
+            detailLine(cv, 43, 400, 'Oil-ash load', number('ash', 1), 'g');
+            detailLine(cv, 821, 211, 'DPF differential', number('pressure', 1), 'mbar');
+            detailLine(cv, 821, 274, 'Filtered differential', number('pressureFiltered', 1), 'mbar');
+            detailLine(cv, 821, 337, 'Temperature before DPF', number('temperature', 0), 'C');
+            detailLine(cv, 821, 400, 'Time since regen', number('regenHours', 1), 'h');
+            label(cv, statusText().slice(0, 117), 52, 490, 19, C.dim);
+        }
+        function regeneration(cv) {
+            card(cv, 43, 112, 736, 350);
+            card(cv, 821, 112, 736, 350);
+            label(cv, 'REGENERATION HISTORY / ECU', 73, 152, 25, C.text, { font: 'bold' });
+            detailLine(cv, 43, 211, 'Distance since last', number('distance', 1), 'km');
+            detailLine(cv, 43, 274, 'Hours since last', number('regenHours', 1), 'h');
+            detailLine(cv, 43, 337, 'Average interval', number('regenAverage', 0), 'km');
+            detailLine(cv, 43, 400, 'Successful total', number('regenCount', 0), '');
+            label(cv, 'REQUEST / SAFETY', 851, 152, 25, C.text, { font: 'bold' });
+            label(cv, 'DDE request code: ' + number('regenRequestCode', 0), 851, 209, 24, C.dim);
+            label(cv, 'DDE inhibit code: ' + number('regenInhibitCode', 0), 851, 258, 24, C.dim);
+            label(cv, 'REQUEST DISABLED', 851, 327, 30, '#f0af67', { font: 'bold' });
+            label(cv, 'D83BX7C0.prg has no validated request routine.', 851, 375, 20, C.text);
+            label(cv, 'Use ISTA service function with verified preconditions.', 851, 420, 19, C.dim);
+            label(cv, 'Raw status codes are not equivalent to regen ON/OFF.', 52, 490, 19, C.dim);
         }
         function readingHistory(cv) {
-            card(cv, 43, 112, 1514, 350);
-            label(cv, 'Recorded live measurements', 73, 155, 30, C.text, { font: 'bold' });
+            card(cv, 43, 112, 736, 350);
+            card(cv, 821, 112, 736, 350);
+            label(cv, 'LAST 5 REGENERATIONS (DDE)', 73, 152, 25, C.text, { font: 'bold' });
+            for (let n = 1; n <= 5; n++) {
+                const y = 212 + (n - 1) * 48;
+                label(cv, n === 1 ? 'Last successful regen' : n + ' regens ago', 73, y, 22, C.dim);
+                const v = number('regenOdo' + n, 1);
+                label(cv, v === '--' ? '--' : v + ' km', 746, y, 25, C.text,
+                    { align: 'right', font: 'bold' });
+            }
+            label(cv, 'RECORDED LIVE SAMPLES', 851, 152, 25, C.text, { font: 'bold' });
             if (!history.length) {
-                label(cv, 'No measurements saved yet.', 73, 245, 29, C.dim);
-                label(cv, 'Valid live readings are saved at most once every 3 minutes.',
-                    73, 295, 23, C.dim);
-                return;
+                label(cv, 'No live samples saved yet.', 851, 233, 24, C.dim);
+            } else {
+                for (let i = 0; i < Math.min(4, history.length); i++) {
+                    const e = history[i], y = 213 + i * 57;
+                    const d = new Date(e.at).toISOString().slice(5, 16).replace('T', ' ');
+                    const soot = Number.isFinite(e.soot) ? e.soot.toFixed(1) + ' g' : '--';
+                    const pressure = Number.isFinite(e.pressure) ? e.pressure.toFixed(1) + ' mbar' : '--';
+                    label(cv, d + ' UTC', 851, y, 21, C.dim);
+                    label(cv, soot + '  /  ' + pressure, 1524, y, 22, C.text,
+                        { align: 'right', font: 'bold' });
+                }
             }
-            const columns = [75, 465, 715, 1030, 1320];
-            ['Date / time (UTC)', 'Soot', 'Pressure', 'DPF temp.', 'Since regen'].forEach((v, i) =>
-                label(cv, v, columns[i], 204, 23, C.dim));
-            for (let i = 0; i < Math.min(4, history.length); i++) {
-                const e = history[i], y = 263 + i * 57;
-                const fmt = (n, unit, digits) => Number.isFinite(n) ?
-                    n.toFixed(digits) + ' ' + unit : '--';
-                const line = [new Date(e.at).toISOString().slice(5, 16).replace('T', ' '),
-                    fmt(e.soot, 'g', 1), fmt(e.pressure, 'mbar', 1),
-                    fmt(e.temperature, '°C', 0), fmt(e.distance, 'km', 1)];
-                line.forEach((v, j) => label(cv, v, columns[j], y, 24, C.text));
-                if (i < 3) cv.fillRect(73, y + 14, 1425, 1, C.track);
-            }
-            label(cv, history.length + ' saved samples - actual values, not regeneration events',
-                73, 494, 20, C.dim);
+            label(cv, 'Mileage is reported by the DDE, not inferred from saved samples.',
+                52, 490, 19, C.dim);
         }
         function render() {
             const cv = ctx.canvas(W, H).clear(C.bg);
             heading(cv);
             if (page === 0) live(cv);
-            else readingHistory(cv);
-            G.frame(cv, ctx.theme(), ['Live', 'History'], page, []);
+            else if (page === 1) details(cv);
+            else if (page === 2) readingHistory(cv);
+            else regeneration(cv);
+            G.frame(cv, ctx.theme(), ['Overview', 'Details', 'History', 'Regeneration'], page, []);
             return ui.image('MAIN_GFX', cv);
         }
         ctx.loop('MAIN', 2, render);

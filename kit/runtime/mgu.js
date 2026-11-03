@@ -89,6 +89,7 @@ class Settings {
         this.file = path.join(DATA_DIR, 'settings.json');
         this.backup = path.join(DATA_DIR, 'settings.backup.json');
         this.saveError = null;
+        this.loadSource = 'defaults';
         this.values = {};
         this.listeners = [];
         for (const s of this.schema) this.values[s.key] = s.default;
@@ -99,10 +100,12 @@ class Settings {
                 const saved = JSON.parse(fs.readFileSync(candidate, 'utf8'));
                 if (!saved || typeof saved !== 'object' || Array.isArray(saved)) continue;
                 Object.assign(this.values, saved);
+                this.loadSource = candidate;
                 log.info('settings loaded from ' + candidate);
                 break;
             } catch (e) { /* missing/corrupt: try the backup */ }
         }
+        if (this.loadSource === 'defaults') log.warn('settings defaults used (no readable primary/backup): ' + this.file);
         // one-time move of saved settings to the new default theme (M Tricolour); later choices are kept
         const th = this.item('theme');
         if (th && fs.existsSync(this.file) && this.values._themeV !== 2) {

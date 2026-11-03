@@ -347,9 +347,14 @@ mgu.run({
                 835, 255, 25, t.text);
                 text(cv, 'Control duration: ' + ctx.settings.get('duration') + ' s',
                     835, 307, 25, t.text);
-                text(cv, 'Last response: ' + ctl.info.slice(0, 43), 835, 377, 20, t.warn);
-                text(cv, 'Temporary output only; not iDrive slot 11 coding.',
-                    835, 449, 19, t.dim);
+                text(cv, 'Last response: ' + ctl.info.slice(0, 54), 835, 377, 20, t.warn);
+                const denied = /NRC 0x31|out of range/i.test(ctl.info);
+                text(cv, denied ? 'RAM01.prg lists E311; this RAM rejects the LIN write.' :
+                    'PRG: RAM01 LIN_RGB_MODULE E311 (2E), actual support unverified.',
+                    835, 420, 19, denied ? t.warn : t.dim);
+                text(cv, denied ? 'Check LIN retrofit / RAM coding. No alternate write is verified.' :
+                    'Temporary output only; not iDrive slot 11 coding.',
+                    835, 461, 19, t.dim);
             }
             return ctx.ui.image('MAIN_GFX', cv);
         });

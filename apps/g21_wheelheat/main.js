@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const mgu = require('./kit/mgu');
 const G = require('./kit/gauges');
 const B = require('./logic');
@@ -7,7 +9,7 @@ const { ComfortAuto } = require('./comfort_auto');
 const { SafeDiag, bytes } = require('./safe_diag');
 
 // Settings is automatically provided as ONE native tab by the renderer.
-const TABS = ['Comfort', 'Diagnostics'];
+const TABS = ['Comfort', 'Diagnostics', 'Log'];
 const text = (cv, s, x, y, size, color, opts) =>
     cv.text(String(s), x, y, size, color, opts || {});
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -27,7 +29,45 @@ mgu.run({
         const outside = { value: null, at: 0, raw: null };
         const acknowledged = new Set();
         let tab = 0, busy = false, statusBusy = false, statusAt = 0;
+        const statusSamples = Object.create(null);
         let lastAction = 'No heating command has been sent.';
+        const eventFile = path.join(ctx.dataDir, 'heating_events.json');
+        let events = [];
+        try {
+            const old = JSON.parse(fs.readFileSync(eventFile, 'utf8'));
+            if (Array.isArray(old)) events = old.filter(e =>
+                e && Number.isFinite(e.at) && typeof e.message === 'string').slice(0, 60);
+        } catch (_) { /* first launch / storage unavailable */ }
+        let eventWriteError = '';
+        const record = (kind, message) => {
+            const at = Date.now();
+            if (events[0] && events[0].kind === kind &&
+                events[0].message === message && at - events[0].at < 15000) return;
+            events.unshift({ at, kind, message: String(message).slice(0, 150) });
+            events = events.slice(0, 60);
+            try {
+                fs.mkdirSync(ctx.dataDir, { recursive: true });
+                const temp = eventFile + '.tmp-' + process.pid;
+                fs.writeFileSync(temp, JSON.stringify(events));
+                fs.renameSync(temp, eventFile);
+                eventWriteError = '';
+            } catch (e) { eventWriteError = String(e.message || e); }
+            ctx.log.info('[HEAT EVENT] ' + kind + ' ' + message);
+        };
+        record('START', 'auto=' + ctx.settings.get('autoEnabled') +
+            ' limit=' + ctx.settings.get('belowTemp') + ' C; loaded=' +
+            ctx.settings.loadSource + '; data=' + ctx.dataDir);
+        let lastPlannerStatus = '';
+        ctx.settings.onChange((key, value) => {
+            let persisted = false;
+            try {
+                const disk = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
+                persisted = key === null || disk[key] === value;
+            } catch (_) {}
+            record('SETTING', String(key) + '=' + String(value) +
+                ' file=' + (persisted ? 'OK' : 'FAILED') +
+                (ctx.settings.saveError ? ' ' + ctx.settings.saveError : ''));
+        });
         const setTab = i => {
             if (Number.isInteger(i) && i >= 0 && i < TABS.length) {
                 tab = i;
@@ -76,6 +116,7 @@ mgu.run({
             if (!permitted() || !ctl.online || !ctl.motionKnown) {
                 lastAction = intent.device + ': NOT sent (permission / BDC / speed-signal check).';
                 ctx.log.warn('[AUTO BLOCKED] ' + lastAction);
+                record('BLOCK', lastAction);
                 return false;
             }
             const data = intent.device === 'Steering wheel'
@@ -89,17 +130,20 @@ mgu.run({
             if (remaining > 0) await wait(remaining);
             if (!permitted() || !ctl.motionKnown || !ctl.online) {
                 lastAction = intent.device + ': NOT sent (conditions changed).';
+                record('BLOCK', lastAction);
                 return false;
             }
             if (!ctl.verified) await ctl.read(B.DID_HEAT);
             if (!ctl.verified || !ctl.motionKnown || !permitted()) {
                 lastAction = intent.device + ': NOT sent (' + ctl.info + ').';
+                record('BLOCK', lastAction);
                 return false;
             }
             const ok = await ctl.autoWrite(data, intent.device + ' ' + intent.type);
             lastAction = (ok ? 'BDC ACK' : 'NOT CONFIRMED') + ': ' + intent.device + ' ' +
                 intent.type + ' (2E ' + bytes(data) + ')';
             ctx.log.info('[AUTO LIVE] ' + lastAction);
+            record(ok ? 'ECU ACK' : 'ECU REJECT', lastAction + ' [' + ctl.info + ']');
             if (ok && (intent.type === 'ON' || intent.type === 'EXTEND')) acknowledged.add(intent.device);
             if (ok && intent.type === 'OFF') acknowledged.delete(intent.device);
             if (ok && intent.type === 'ON' && !cycleSaved) {
@@ -120,9 +164,21 @@ mgu.run({
                     if (!ctl.online) break;
                     await ctl.read(did);
                     const reply = ctl.readbacks[did];
-                    if (reply) ctx.log.info('[HEATER STATUS SNAPSHOT] DID 0x' +
-                        did.toString(16).toUpperCase() + ' ' +
-                        (reply.ok ? reply.raw : reply.error));
+                    if (reply) {
+                        ctx.log.info('[HEATER STATUS SNAPSHOT] DID 0x' +
+                            did.toString(16).toUpperCase() + ' ' +
+                            (reply.ok ? reply.raw : reply.error));
+                        record('READ 0x' + did.toString(16).toUpperCase(),
+                            reply.ok ? reply.raw : reply.error);
+                        const decoded = reply.ok ? (did === B.DID_HEAT ?
+                            B.decodeWheelReadback(reply.payload) :
+                            B.decodeSeatReadback(reply.payload)) : null;
+                        if (decoded) {
+                            const history = statusSamples[did] || [];
+                            history.push(decoded.on);
+                            statusSamples[did] = history.slice(-3);
+                        }
+                    }
                 }
                 statusAt = Date.now();
             } finally { statusBusy = false; }
@@ -140,8 +196,24 @@ mgu.run({
                 // Start, extend or stop a confirmed comfort-heating cycle while
                 // moving as long as speed data are fresh and BDC accepts writes.
                 const enabledForPlanner = cfg.autoEnabled && (canStart || auto.active.size > 0);
+                const plannerStatus = !cfg.autoEnabled ? 'OFF (setting)'
+                    : reading.value === null ? 'WAITING FOR TEMP'
+                    : now - reading.at > 120000 ? 'STALE TEMP'
+                    : !ctl.online ? 'NO TASU CONNECTION'
+                    : !ctl.motionKnown ? 'NO FRESH SPEED'
+                    : auto.fired ? 'CYCLE ALREADY RUN' :
+                        reading.value > cfg.belowTemp ? 'ABOVE LIMIT' : 'COLD DWELL / READY';
+                if (plannerStatus !== lastPlannerStatus) {
+                    record('AUTO', plannerStatus + '; T=' +
+                        (reading.value === null ? '--' : reading.value.toFixed(1)) +
+                        ' C, limit=' + cfg.belowTemp + ' C');
+                    lastPlannerStatus = plannerStatus;
+                }
                 const intents = auto.step({ now, tempC: reading.value, tempAt: reading.at,
                     cfg: Object.assign({}, cfg, { autoEnabled: enabledForPlanner }) });
+                for (const intent of intents)
+                    record('PLAN', intent.device + ' ' + intent.type +
+                        ' planned (NOT YET ECU CONFIRMED)');
                 for (const intent of intents) {
                     const ok = await sendIntent(intent);
                     auto.acknowledge(intent, ok, Date.now());
@@ -149,6 +221,7 @@ mgu.run({
             } catch (e) {
                 lastAction = 'Automatic heating error: ' + (e.message || String(e));
                 ctx.log.warn(lastAction);
+                record('ERROR', lastAction);
             } finally { busy = false; }
         }
         setInterval(() => { autoStep().catch(e => ctx.log.error(e)); }, 1000);
@@ -157,7 +230,7 @@ mgu.run({
         ctx.ui.onClick('BTN_PAGE', () => setTab((tab + 1) % TABS.length));
         ctx.ui.onClick('BTN_ACTION', () => {
             if (tab === 0) setTab(1);
-            else refreshReadbacks().catch(e => { ctl.info = 'Read error: ' + e.message; });
+            else if (tab === 1) refreshReadbacks().catch(e => { ctl.info = 'Read error: ' + e.message; });
         });
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
         ctl.init().catch(e => { ctl.info = 'TASU unavailable: ' + e; });
@@ -208,7 +281,7 @@ mgu.run({
                         auto.remaining('Passenger seat', now)) + 's', 820, 453, 30, t.accent);
                 if (ctx.settings.saveError)
                     text(cv, 'Settings could not be saved; see log', 820, 482, 20, t.warn);
-            } else {
+            } else if (tab === 1) {
                 G.panel(cv, t, 24, 62, 1552, 445, 'Actual BDC read-back (read-only)');
                 text(cv, 'ECU 0x40    Service 22    Refresh: Diagnostics / Action',
                     54, 138, 26, t.text);
@@ -218,10 +291,13 @@ mgu.run({
                     const decoded = !stale && entry.ok ? (seat ?
                         B.decodeSeatReadback(entry.payload) :
                         B.decodeWheelReadback(entry.payload)) : null;
+                    const sample = statusSamples[did] || [];
+                    const inconsistent = new Set(sample).size > 1;
                     const detail = !decoded ? stale ? 'NOT AVAILABLE' :
                         entry.ok ? 'Unsupported reply format' : 'ECU read rejected' :
-                        seat ? decoded.on ? 'ON  |  Level ' + decoded.level : 'OFF' :
-                            decoded.on ? 'ON  |  Indicator ' + (decoded.led ? 'ON' : 'OFF') : 'OFF';
+                        inconsistent ? 'FLUCTUATING ECU READBACK' :
+                        seat ? decoded.on ? 'ON  |  Level ' + decoded.level : 'OFF (BDC report)' :
+                            decoded.on ? 'ON  |  LED ' + (decoded.led ? 'ON' : 'OFF') : 'OFF (BDC report)';
                     text(cv, label, 54, y, 25, t.text);
                     text(cv, detail, 665, y, 23, decoded ?
                         decoded.on ? t.accent : t.text : t.warn);
@@ -230,14 +306,34 @@ mgu.run({
                 readRow('Driver seat', B.DID_SEAT_DRIVER, 267, true);
                 readRow('Passenger seat', B.DID_SEAT_PASSENGER, 327, true);
                 cv.fillRect(54, 354, 1450, 1, '#2e4052');
-                text(cv, 'Actual heater status decoded from BDC_G05 ECU result fields.',
-                    54, 400, 24, t.accent);
+                text(cv, 'A single readback can be unstable. Compare raw 62 replies in Log.',
+                    54, 400, 22, t.warn);
                 text(cv, statusBusy ? 'Reading BDC ...' : 'Last ECU read: ' + (statusAt ?
                     Math.round((now - statusAt) / 1000) + 's ago' : 'not yet'), 54, 448, 22, t.dim);
                 text(cv, 'Outside sensor: ' + (outside.raw === null ? 'unavailable' :
                     'raw ' + outside.raw + ' -> ' + outside.value.toFixed(1) + ' °C') +
                     '   |   start threshold ' + c.belowTemp + ' °C',
                 54, 486, 20, t.dim);
+            } else {
+                G.panel(cv, t, 24, 62, 1552, 445, 'Automatic heating / diagnostic log');
+                let diskStatus = 'NOT FOUND';
+                try {
+                    const disk = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
+                    diskStatus = 'READ OK | Auto ' + String(disk.autoEnabled) +
+                        ' | Limit ' + String(disk.belowTemp) + ' C';
+                } catch (e) { diskStatus = 'NOT READABLE: ' + String(e.code || e.message || e); }
+                text(cv, 'Saved settings: ' + diskStatus.slice(0, 105),
+                    52, 126, 22, diskStatus.startsWith('READ OK') ? t.accent : t.warn);
+                text(cv, 'Storage: ' + (ctx.settings.saveError || eventWriteError || 'no error reported').slice(0, 112),
+                    52, 160, 19, (ctx.settings.saveError || eventWriteError) ? t.warn : t.dim);
+                events.slice(0, 7).forEach((entry, i) => {
+                    const y = 205 + 42 * i;
+                    text(cv, new Date(entry.at).toTimeString().slice(0, 8), 54, y, 21, t.dim);
+                    text(cv, entry.kind, 180, y, 21,
+                        /REJECT|ERROR|BLOCK/.test(entry.kind) ? t.warn : t.accent);
+                    text(cv, entry.message.slice(0, 112), 365, y, 21, t.text);
+                });
+                if (!events.length) text(cv, 'No events yet', 52, 264, 24, t.dim);
             }
             return ctx.ui.image('MAIN_GFX', cv);
         });
