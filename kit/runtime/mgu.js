@@ -32,9 +32,20 @@ const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'app-spec.json'), '
 /* ---------------- paths ---------------- */
 // cwd of an OAP app is oap_<uid>/data; source is oap_<uid>/source
 const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
-// Always use the installed app's stable data folder. A missing folder is
-// created on save; process.cwd() may differ on a background/autostart launch.
-const DATA_DIR = path.join(APP_ROOT, 'data');
+const appData = path.join(APP_ROOT, 'data');
+const workingDir = path.resolve(process.cwd());
+const isDirectory = (p) => {
+    try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
+};
+// The real OAP working directory is normally oap_<uid>/data. On some Store
+// installations APP_ROOT/data is instead a regular file, so using that
+// presumed path caused EEXIST on every settings save. Prefer the actual OAP
+// data working directory when its final segment is "data"; otherwise only
+// accept an existing directory (never a same-named regular file).
+const DATA_DIR = path.basename(workingDir) === 'data' && isDirectory(workingDir)
+    ? workingDir : isDirectory(appData) ? appData
+        : isDirectory(workingDir) && /(?:^|[/\\])oap_[^/\\]+(?:[/\\]|$)/i.test(workingDir)
+            ? workingDir : appData;
 const RHMI_RES = path.join(APP_ROOT, 'rhmiData', 'resources');
 
 /* ---------------- logging: SDK logger (DLT) + small rotating file ---------------- */
@@ -125,7 +136,8 @@ class Settings {
     save() {
         const temp = this.file + '.tmp-' + process.pid;
         try {
-            fs.mkdirSync(path.dirname(this.file), { recursive: true });
+            if (!isDirectory(path.dirname(this.file)))
+                fs.mkdirSync(path.dirname(this.file), { recursive: true });
             const serialized = JSON.stringify(this.values, null, 1);
             fs.writeFileSync(temp, serialized);
             // A rename in the same directory replaces the file atomically,

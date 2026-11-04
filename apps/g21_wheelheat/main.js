@@ -326,8 +326,11 @@ mgu.run({
                     52, 126, 22, diskStatus.startsWith('READ OK') ? t.accent : t.warn);
                 text(cv, 'Storage: ' + (ctx.settings.saveError || eventWriteError || 'no error reported').slice(0, 112),
                     52, 160, 19, (ctx.settings.saveError || eventWriteError) ? t.warn : t.dim);
+                text(cv, 'Data: ' + String(ctx.dataDir).slice(0, 120) +
+                    '  | Loaded: ' + String(ctx.settings.loadSource).slice(-48),
+                    52, 190, 17, t.dim);
                 events.slice(0, 7).forEach((entry, i) => {
-                    const y = 205 + 42 * i;
+                    const y = 228 + 38 * i;
                     text(cv, new Date(entry.at).toTimeString().slice(0, 8), 54, y, 21, t.dim);
                     text(cv, entry.kind, 180, y, 21,
                         /REJECT|ERROR|BLOCK/.test(entry.kind) ? t.warn : t.accent);
