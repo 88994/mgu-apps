@@ -6,7 +6,7 @@ Three source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/m
 | --- | --- | --- |
 | `dpf_monitor` | 0.2.8 | Overview, DPF details, real regeneration odometer history and diagnostics; no simulated data |
 | `g21_ambient` | 0.3.10 | RGB picker and clear RAM01 E311 rejection diagnostics, no guessed alternate writes |
-| `g21_wheelheat` | 0.4.10 | Background autostart, settings storage diagnostics, event log, guarded in-motion heating control |
+| `g21_wheelheat` | 0.4.11 | Background autostart, settings storage diagnostics, event log, guarded in-motion heating control |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 
@@ -14,7 +14,7 @@ The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, bui
 
 The WheelHeat manifest declares `"mguAppStartType": "autostart"`. The repository builder `tools/build_store_app.py` runs the SDK build and then inserts that property into both package formats. This is a package property, **not** a GitHub branch or separate root-service patch. The Store source on `main` is sufficient; the older `wheelheat-autostart-0.4.2-qa` branch is only a historical test.
 
-Launching the app does not automatically authorize heating: enable **Automatic heating on cold startup** once in WheelHeat settings. The app starts in the background on every supported MGU boot, and attempts to retain ON/OFF, temperature and duration settings in the app's data folder. Version 0.4.10 selects the real OAP data directory rather than the unusable presumed path shown by the on-car EEXIST error; verify on the Log tab after restarting. There is no longer a version-based reset.
+Launching the app does not automatically authorize heating: enable **Automatic heating on cold startup** once in WheelHeat settings. The app starts in the background on every supported MGU boot, and attempts to retain ON/OFF, temperature and duration settings in the app's data folder. The storage resolver skips an existing regular file called data, probes candidate app-scoped directories for writability and falls back to an app-private sibling of source/. The Log tab shows the exact chosen directory and filesystem diagnostics; check persistence across a head-unit restart. There is no version-based setting reset.
 
 The automatic live-control implementation requires an explicit saved enable switch, fresh vehicle-speed signal, and a fresh successful BDC read before each request. Automatic heating can start or extend while driving; manual diagnostic writes retain the standstill guard. Commands encode at most 255 seconds and ECU acceptance while driving must be verified on the car. Settings use a stable app-data path, atomic writes and a backup. The Log tab now shows the selected storage path, loaded file and on-disk values; the real-car storage fix still needs verification. A 10-minute configured timer is not proof of 10 minutes of physical heating. The diagnostics tab decodes BDC readbacks using the supplied PRG schema; the byte mapping still needs on-car validation.
 

@@ -37,15 +37,37 @@ const workingDir = path.resolve(process.cwd());
 const isDirectory = (p) => {
     try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
 };
-// The real OAP working directory is normally oap_<uid>/data. On some Store
-// installations APP_ROOT/data is instead a regular file, so using that
-// presumed path caused EEXIST on every settings save. Prefer the actual OAP
-// data working directory when its final segment is "data"; otherwise only
-// accept an existing directory (never a same-named regular file).
-const DATA_DIR = path.basename(workingDir) === 'data' && isDirectory(workingDir)
-    ? workingDir : isDirectory(appData) ? appData
-        : isDirectory(workingDir) && /(?:^|[/\\])oap_[^/\\]+(?:[/\\]|$)/i.test(workingDir)
-            ? workingDir : appData;
+// An OAP image may contain an ordinary FILE at <app root>/data. Never try
+// mkdir on that file. Use an existing app-scoped directory or a private,
+// durable sibling of source/ (never a global /tmp or shared process cwd).
+const fallbackData = path.join(APP_ROOT, 'mgu_persistent');
+const cwdIsOapData = path.basename(workingDir) === 'data' &&
+    (workingDir.startsWith(APP_ROOT + path.sep) ||
+     /(?:^|[/\\])oap_[^/\\]+(?:[/\\]|$)/i.test(workingDir));
+const storageCandidates = [appData];
+if (cwdIsOapData && workingDir !== appData) storageCandidates.push(workingDir);
+storageCandidates.push(fallbackData);
+// If the app itself runs in its private root, it is a last fallback.
+// Never put settings into source/ or a shared process working directory.
+if (workingDir === APP_ROOT) storageCandidates.push(workingDir);
+const DATA_DIR = (() => {
+    for (const dir of storageCandidates) {
+        // This prevents EEXIST when "data" exists but is not a directory.
+        if (fs.existsSync(dir) && !isDirectory(dir)) continue;
+        const probe = path.join(dir, '.mgu-write-check-' + process.pid);
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(probe, '');
+            fs.unlinkSync(probe);
+            return dir;
+        } catch (_) {
+            try { fs.unlinkSync(probe); } catch (_) {}
+        }
+    }
+    return fallbackData; // normal save error reports a genuine permission issue
+})();
+const STORAGE_INFO = 'expected=' + (isDirectory(appData) ? 'directory' :
+    fs.existsSync(appData) ? 'file' : 'missing') + ' cwd=' + workingDir;
 const RHMI_RES = path.join(APP_ROOT, 'rhmiData', 'resources');
 
 /* ---------------- logging: SDK logger (DLT) + small rotating file ---------------- */
@@ -577,7 +599,7 @@ async function runInner(impl) {
     const display = new Display(ui, log, SPEC, settings, () => themes.theme(settings.get('theme')));
     ui.display = display;
     const ctx = {
-        app, ui, settings, log, spec: SPEC, dataDir: DATA_DIR, display, widget,
+        app, ui, settings, log, spec: SPEC, dataDir: DATA_DIR, storageInfo: STORAGE_INFO, display, widget,
         signals: require('./signals'),
         theme: () => themes.theme(settings.get('theme')),
         /**

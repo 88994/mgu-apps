@@ -329,8 +329,9 @@ mgu.run({
                 text(cv, 'Data: ' + String(ctx.dataDir).slice(0, 120) +
                     '  | Loaded: ' + String(ctx.settings.loadSource).slice(-48),
                     52, 190, 17, t.dim);
+                text(cv, 'FS: ' + String(ctx.storageInfo).slice(0, 138), 52, 216, 15, t.dim);
                 events.slice(0, 7).forEach((entry, i) => {
-                    const y = 228 + 38 * i;
+                    const y = 245 + 35 * i;
                     text(cv, new Date(entry.at).toTimeString().slice(0, 8), 54, y, 21, t.dim);
                     text(cv, entry.kind, 180, y, 21,
                         /REJECT|ERROR|BLOCK/.test(entry.kind) ? t.warn : t.accent);
