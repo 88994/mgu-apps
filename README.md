@@ -6,7 +6,7 @@ Three source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/m
 | --- | --- | --- |
 | `dpf_monitor` | 0.2.8 | Overview, DPF details, real regeneration odometer history and diagnostics; no simulated data |
 | `g21_ambient` | 0.3.10 | RGB picker and clear RAM01 E311 rejection diagnostics, no guessed alternate writes |
-| `g21_wheelheat` | 0.4.12 | Background autostart, simple app-data settings storage, diagnostics and guarded heating control |
+| `g21_wheelheat` | 0.4.13 | Background autostart, persistent settings, original Log and offline full-diagnostic QR export |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 
@@ -17,6 +17,13 @@ The WheelHeat manifest declares `"mguAppStartType": "autostart"`. The repository
 Launching the app does not automatically authorize heating: enable **Automatic heating on cold startup** once in WheelHeat settings. The app starts in the background on every supported MGU boot, and attempts to retain ON/OFF, temperature and duration settings in the app's data folder. The storage path now matches the original MGU kit: the MainApp-provisioned app `data` directory (or the app's working directory if `data` does not exist). There are no early write probes, alternate sibling directories, or `mkdir` calls. A setting change writes directly to `settings.json` and verifies the file immediately by reading it back; the Log tab reports the path and any genuine write/read error. After installation, change a setting once and check persistence across a full head-unit restart. There is no version-based setting reset.
 
 The automatic live-control implementation requires an explicit saved enable switch, fresh vehicle-speed signal, and a fresh successful BDC read before each request. Automatic heating can start or extend while driving; manual diagnostic writes retain the standstill guard. Commands encode at most 255 seconds and ECU acceptance while driving must be verified on the car. Settings use a direct `settings.json` write and immediate read-back; legacy backup files can still be loaded, but no new backup or temporary file is created. The Log tab shows the selected storage path, loaded file and on-disk values; persistence still needs on-car verification. A 10-minute configured timer is not proof of 10 minutes of physical heating. The diagnostics tab decodes BDC readbacks using the supplied PRG schema; the byte mapping still needs on-car validation.
+
+
+### Full diagnostic QR export (Heating Comfort 0.4.13)
+
+The original **Log** tab remains unchanged. A separate **QR Log** tab takes a read-only snapshot of the current heating state, saved settings, anti-repeat cycle marker, BDC raw replies, all retained heating events, and the existing app log file plus its rotated predecessor. The snapshot is split into numbered, UTF-8 **plain-text** QR codes so nothing in the retained source files is cut off to fit a single code. Select **QR Log** to refresh; **ACTION** advances to the next code (wraps around). Scan and keep every numbered code with the same report ID to reconstruct the entire snapshot. The report is generated locally: no external web service, network transfer, additional ECU command, or forced heating action. The runtime itself rotates its logs at 256 KiB, and older logs already rotated out cannot be recovered.
+
+**CYCLE ALREADY RUN** is an anti-repeat state, **not an ECU readback**. A fresh app process restores `auto.fired` if its saved `_autoCycleAt` (written only after a positive BDC ON acknowledgement) is less than 30 minutes old. Within one process, the planner also sets `auto.fired` after 15 seconds of sufficiently low temperature **before** the ECU command is confirmed; a rejected request can therefore still suppress another cycle until the process restarts. The Log and QR report identify which case applied and include the timestamp and acknowledgement details. A positive BDC reply never proves actual heater warmth.
 
 ## Diagnostics and limitations
 

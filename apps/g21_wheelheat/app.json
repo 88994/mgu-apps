@@ -2,7 +2,7 @@
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
   "description": "Persistent cold-weather heating automation with motion-aware BDC commands and readback",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
@@ -36,7 +36,7 @@
         ],
         [
           "BTN_ACTION",
-          "Read BDC status"
+          "Read BDC status / Next QR page"
         ],
         [
           "BTN_SETTINGS",

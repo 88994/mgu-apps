@@ -7,9 +7,10 @@ const G = require('./kit/gauges');
 const B = require('./logic');
 const { ComfortAuto } = require('./comfort_auto');
 const { SafeDiag, bytes } = require('./safe_diag');
+const QR = require('./qr_log');
 
 // Settings is automatically provided as ONE native tab by the renderer.
-const TABS = ['Comfort', 'Diagnostics', 'Log'];
+const TABS = ['Comfort', 'Diagnostics', 'Log', 'QR Log'];
 const text = (cv, s, x, y, size, color, opts) =>
     cv.text(String(s), x, y, size, color, opts || {});
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -21,10 +22,16 @@ mgu.run({
         const auto = new ComfortAuto();
         // Prevent a crash/restart of the OAP process from immediately
         // triggering another physical heating cycle in the same cold start.
+        const appStartedAt = Date.now();
         const previousCycle = Number(ctx.settings.get('_autoCycleAt'));
-        if (Number.isFinite(previousCycle) && previousCycle > 0 &&
-            Date.now() >= previousCycle && Date.now() - previousCycle < 30 * 60000)
-            auto.fired = true;
+        const restoredCycle = Number.isFinite(previousCycle) && previousCycle > 0 &&
+            appStartedAt >= previousCycle && appStartedAt - previousCycle < 30 * 60000;
+        if (restoredCycle) auto.fired = true;
+        let cycleReason = restoredCycle ?
+            'RESTORED: accepted ON ' + new Date(previousCycle).toISOString() +
+            '; age=' + Math.round((appStartedAt - previousCycle) / 1000) +
+            's; window=1800s (restart does not reset)' :
+            'NO RESTORED CYCLE: no accepted ON marker in the last 30 minutes';
         let cycleSaved = false;
         const outside = { value: null, at: 0, raw: null };
         const acknowledged = new Set();
@@ -55,7 +62,56 @@ mgu.run({
         record('START', 'auto=' + ctx.settings.get('autoEnabled') +
             ' limit=' + ctx.settings.get('belowTemp') + ' C; loaded=' +
             ctx.settings.loadSource + '; data=' + ctx.dataDir);
+        record('CYCLE', cycleReason);
         let lastPlannerStatus = '';
+        let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
+
+        function buildQrReport() {
+            try {
+                const now = Date.now();
+                const marker = Number(ctx.settings.get('_autoCycleAt'));
+                qrReport = QR.createReport(ctx, {
+                    events, eventWriteError,
+                    state: {
+                        appStartedAt: new Date(appStartedAt).toISOString(),
+                        cycleReason, cycleAlreadyRun: auto.fired,
+                        previousPositiveAckOnAt: Number.isFinite(marker) && marker > 0 ?
+                            new Date(marker).toISOString() : null,
+                        markerAgeSeconds: Number.isFinite(marker) && marker > 0 ?
+                            Math.round((now - marker) / 1000) : null,
+                        antiRepeatWindowSeconds: 1800,
+                        coldDwellStart: auto.coldSince,
+                        activeHeaters: Array.from(auto.active).map(([name, state]) =>
+                            ({ name, deadline: state.deadline, nextRenewAt: state.nextRenewAt })),
+                        lastPlannerStatus, lastAction,
+                        outsideTemperature: outside,
+                        speedKmh: ctl.speed, speedAgeMs: ctl.speedAt ? now - ctl.speedAt : null,
+                        bdcOnline: ctl.online, bdcReadVerified: ctl.verified,
+                        speedFresh: ctl.motionKnown, bdcMessage: ctl.info,
+                        lastBdcWriteAt: ctl.lastWriteAt, bdcReadbacks: ctl.readbacks,
+                    },
+                });
+                qrPage = 0;
+                qrMatrix = QR.matrix(qrReport.pages[0]);
+                qrError = '';
+            } catch (e) {
+                qrReport = null;
+                qrMatrix = null;
+                qrError = String(e && e.message || e);
+                ctx.log.warn('QR diagnostic export failed: ' + qrError);
+            }
+        }
+        function nextQrPage() {
+            if (!qrReport) { buildQrReport(); return; }
+            try {
+                qrPage = (qrPage + 1) % qrReport.pages.length;
+                qrMatrix = QR.matrix(qrReport.pages[qrPage]);
+                qrError = '';
+            } catch (e) {
+                qrError = String(e && e.message || e);
+                ctx.log.warn('QR page encoding failed: ' + qrError);
+            }
+        }
         ctx.settings.onChange((key, value) => {
             let persisted = false;
             try {
@@ -68,7 +124,9 @@ mgu.run({
         });
         const setTab = i => {
             if (Number.isInteger(i) && i >= 0 && i < TABS.length) {
+                const enteredQr = tab !== 3 && i === 3;
                 tab = i;
+                if (enteredQr) buildQrReport();
                 if (tab === 1) refreshReadbacks().catch(e => { ctl.info = 'BDC read error: ' + e.message; });
             }
         };
@@ -146,7 +204,13 @@ mgu.run({
             if (ok && intent.type === 'OFF') acknowledged.delete(intent.device);
             if (ok && intent.type === 'ON' && !cycleSaved) {
                 cycleSaved = true;
-                ctx.settings.set('_autoCycleAt', Date.now());
+                const acceptedAt = Date.now();
+                ctx.settings.set('_autoCycleAt', acceptedAt);
+                cycleReason = 'POSITIVE BDC ON ACK: ' + intent.device + ' at ' +
+                    new Date(acceptedAt).toISOString() +
+                    '; marker file=' + (ctx.settings.saveError ? 'FAILED' : 'OK') +
+                    '; physical heating still unverified';
+                record('CYCLE', cycleReason);
             }
             return ok;
         }
@@ -207,8 +271,15 @@ mgu.run({
                         ' C, limit=' + cfg.belowTemp + ' C');
                     lastPlannerStatus = plannerStatus;
                 }
+                const wasFired = auto.fired;
                 const intents = auto.step({ now, tempC: reading.value, tempAt: reading.at,
                     cfg: Object.assign({}, cfg, { autoEnabled: enabledForPlanner }) });
+                if (!wasFired && auto.fired) {
+                    cycleReason = 'IN-MEMORY PLANNER FIRED after cold dwell at ' +
+                        new Date(now).toISOString() + '; intents=' + intents.length +
+                        '; ECU confirmation not yet known';
+                    record('CYCLE', cycleReason);
+                }
                 for (const intent of intents)
                     record('PLAN', intent.device + ' ' + intent.type +
                         ' planned (NOT YET ECU CONFIRMED)');
@@ -229,6 +300,7 @@ mgu.run({
         ctx.ui.onClick('BTN_ACTION', () => {
             if (tab === 0) setTab(1);
             else if (tab === 1) refreshReadbacks().catch(e => { ctl.info = 'Read error: ' + e.message; });
+            else if (tab === 3) nextQrPage();
         });
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
         ctl.init().catch(e => { ctl.info = 'TASU unavailable: ' + e; });
@@ -312,7 +384,7 @@ mgu.run({
                     'raw ' + outside.raw + ' -> ' + outside.value.toFixed(1) + ' °C') +
                     '   |   start threshold ' + c.belowTemp + ' °C',
                 54, 486, 20, t.dim);
-            } else {
+            } else if (tab === 2) {
                 G.panel(cv, t, 24, 62, 1552, 445, 'Automatic heating / diagnostic log');
                 let diskStatus = 'NOT FOUND';
                 try {
@@ -339,6 +411,28 @@ mgu.run({
                     text(cv, entry.message.slice(0, 112), 365, y, 21, t.text);
                 });
                 if (!events.length) text(cv, 'No events yet', 52, 264, 24, t.dim);
+            } else {
+                G.panel(cv, t, 24, 62, 540, 445, 'QR diagnostic export');
+                G.panel(cv, t, 584, 62, 992, 445, 'Full retained diagnostic log');
+                if (qrMatrix && qrReport) {
+                    QR.draw(cv, qrMatrix, 91, 107, 390);
+                    text(cv, 'REPORT ' + qrReport.id, 620, 145, 27, t.accent, { font: 'bold' });
+                    text(cv, 'QR ' + (qrPage + 1) + ' / ' + qrReport.pages.length,
+                        620, 205, 39, t.text, { font: 'bold' });
+                    text(cv, 'ACTION: next QR page', 620, 263, 27, t.text);
+                    text(cv, 'Switch away and back to refresh the snapshot.', 620, 310, 22, t.dim);
+                    text(cv, 'Includes: settings, cycle reason, sensor data,',
+                        620, 369, 22, t.text);
+                    text(cv, 'BDC raw replies, all saved events and available', 620, 401, 22, t.text);
+                    text(cv, 'rotated app logs (' + Math.ceil(qrReport.totalBytes / 1024) +
+                        ' KiB total).', 620, 433, 22, t.text);
+                    text(cv, 'Scan EVERY numbered QR to reconstruct the full report.',
+                        620, 477, 20, t.warn);
+                } else {
+                    text(cv, 'QR export unavailable: ' + (qrError || 'no report').slice(0, 110),
+                        620, 190, 25, t.warn);
+                    text(cv, 'Switch tabs to retry.', 620, 250, 24, t.text);
+                }
             }
             return ctx.ui.image('MAIN_GFX', cv);
         });
