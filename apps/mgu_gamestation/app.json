@@ -1,0 +1,35 @@
+{
+  "id": "mgu_gamestation",
+  "title": "MGU GameStation",
+  "description": "Offline retro gaming with two phone controllers: NES, SNES, Game Boy / Color and Arcade",
+  "version": "0.1.0",
+  "vendor": "G21 Offline Lab",
+  "loggingId": "OAG1",
+  "iconGlyph": "GAME",
+  "cpuLimit": 80,
+  "maxDiskUsage": 134217728,
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": { "statusCarSpeed2": "rs" }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "MGU GameStation",
+      "buttons": [
+        ["BTN_PLATFORM", "Next platform"],
+        ["BTN_ACTION", "Play / Back"],
+        ["BTN_PAIR", "Connect phones"],
+        ["BTN_SETTINGS", "Settings"]
+      ]
+    }
+  ],
+  "settings": [
+    {"key": "theme", "label": "Colour theme", "type": "choice", "default": "ice",
+     "options": [["ice", "Ice White"], ["m_tricolour", "M Tricolour"], ["amber", "Night Amber"]]},
+    {"key": "renderer", "label": "Renderer", "type": "choice", "default": "auto",
+     "options": [["auto", "GPU"], ["software", "Software"]]},
+    {"key": "layout", "label": "Screen layout", "type": "choice", "default": "full",
+     "options": [["full", "Full screen"], ["standard", "Standard"]]}
+  ]
+}

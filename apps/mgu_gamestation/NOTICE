@@ -1,0 +1,28 @@
+MGU GameStation v0.1.0
+
+This app bundles the following emulator source modules (with module-format
+conversion, Node.js 8 compatibility and SNES diagnostic suppression;
+see tools/vendor_retro_cores.py for the exact modifications):
+
+1. nes-js, Copyright (c) 2017 Takahiro.
+   https://github.com/takahirox/nes-js
+   License: MIT (NES_JS_LICENSE.txt).
+
+2. serverboy.js, by Dan Shumway and contributors, based on the GameBoy
+   emulator developed by Grant Galitz and others.
+   https://github.com/danShumway/serverboy.js
+   License: GNU General Public License, Version 2 (SERVERBOY_LICENSE.txt).
+   This GameStation app is GPL-2.0 because it incorporates the Serverboy core;
+   other standalone apps in this repository are unaffected.
+
+3. jssnes, by deepneko and contributors.
+   https://github.com/deepneko/jssnes
+   License: MIT (JSSNES_LICENSE.txt).
+
+4. QR Code Generator for JavaScript, Copyright (c) 2009 Kazuhiko Arase.
+   https://github.com/kazuhikoarase/qrcode-generator
+   License: MIT (QR_VENDOR_LICENSE.txt).
+
+No commercial game ROMs or console firmware are bundled.
+The GameStation code, vendor bundles, and bundling scripts are available
+in the same source repository as the app for review and redistribution.

@@ -1,14 +1,25 @@
 # MGU Apps — BMW iDrive 7
 
-Three source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
+Four source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
 
 | App | Version | Function |
 | --- | --- | --- |
 | `dpf_monitor` | 0.2.8 | Overview, DPF details, real regeneration odometer history and diagnostics; no simulated data |
 | `g21_ambient` | 0.3.10 | RGB picker and clear RAM01 E311 rejection diagnostics, no guessed alternate writes |
 | `g21_wheelheat` | 0.4.13 | Background autostart, persistent settings, original Log and offline full-diagnostic QR export |
+| `mgu_gamestation` | 0.1.0 (experimental) | NES, SNES, Game Boy/Color, Pong; two Wi-Fi smartphone controllers; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
+
+## GameStation (experimental)
+
+Install `mgu_gamestation` from MGU Store, connect up to two phones to the BMW
+hotspot, and open **Connect phones** in GameStation to scan the individual QR
+codes. Both phones act as offline controller pages; each can also import
+legally obtained ROMs. Pong requires no ROM. The NES/SNES/GB/GBC emulation takes
+place inside the MGU process, not on the phones. Headunit CPU performance,
+vehicle audio and network reachability require in-car testing before the app
+can be called production ready. [Setup, limitations and licenses](apps/mgu_gamestation/README.md).
 
 ## WheelHeat autostart
 

@@ -416,7 +416,7 @@ def build(app_id, language='en'):
     for f in os.listdir(adir):
         if f.endswith('.js'):
             shutil.copy(os.path.join(adir, f), os.path.join(src, 'javascript', 'app.js' if f == 'main.js' else f))
-        elif f.endswith(('.wasm', '.wad')) or f in ('LICENSE', 'NOTICE'):
+        elif f.endswith(('.wasm', '.wad', '_LICENSE.txt')) or f in ('LICENSE', 'NOTICE'):
             # files the app reads as they are (doom: the game as WebAssembly, its data, its licences)
             shutil.copy(os.path.join(adir, f), os.path.join(src, 'javascript', f))
         elif os.path.isdir(os.path.join(adir, f)):
