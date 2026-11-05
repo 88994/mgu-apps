@@ -30,43 +30,16 @@ const sdkLog = logging.getSDKLogger();
 const SPEC = JSON.parse(fs.readFileSync(path.join(__dirname, 'app-spec.json'), 'utf8'));
 
 /* ---------------- paths ---------------- */
-// cwd of an OAP app is oap_<uid>/data; source is oap_<uid>/source
+// Match the upstream MGU kit: MainApp creates the app-private data directory.
+// Do not probe it during module import or try a sibling of source/ (not writable).
 const APP_ROOT = path.resolve(__dirname, '..', '..', '..');
 const appData = path.join(APP_ROOT, 'data');
 const workingDir = path.resolve(process.cwd());
 const isDirectory = (p) => {
     try { return fs.statSync(p).isDirectory(); } catch (_) { return false; }
 };
-// An OAP image may contain an ordinary FILE at <app root>/data. Never try
-// mkdir on that file. Use an existing app-scoped directory or a private,
-// durable sibling of source/ (never a global /tmp or shared process cwd).
-const fallbackData = path.join(APP_ROOT, 'mgu_persistent');
-const cwdIsOapData = path.basename(workingDir) === 'data' &&
-    (workingDir.startsWith(APP_ROOT + path.sep) ||
-     /(?:^|[/\\])oap_[^/\\]+(?:[/\\]|$)/i.test(workingDir));
-const storageCandidates = [appData];
-if (cwdIsOapData && workingDir !== appData) storageCandidates.push(workingDir);
-storageCandidates.push(fallbackData);
-// If the app itself runs in its private root, it is a last fallback.
-// Never put settings into source/ or a shared process working directory.
-if (workingDir === APP_ROOT) storageCandidates.push(workingDir);
-const DATA_DIR = (() => {
-    for (const dir of storageCandidates) {
-        // This prevents EEXIST when "data" exists but is not a directory.
-        if (fs.existsSync(dir) && !isDirectory(dir)) continue;
-        const probe = path.join(dir, '.mgu-write-check-' + process.pid);
-        try {
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(probe, '');
-            fs.unlinkSync(probe);
-            return dir;
-        } catch (_) {
-            try { fs.unlinkSync(probe); } catch (_) {}
-        }
-    }
-    return fallbackData; // normal save error reports a genuine permission issue
-})();
-const STORAGE_INFO = 'expected=' + (isDirectory(appData) ? 'directory' :
+const DATA_DIR = fs.existsSync(appData) ? appData : workingDir;
+const STORAGE_INFO = 'appData=' + (isDirectory(appData) ? 'directory' :
     fs.existsSync(appData) ? 'file' : 'missing') + ' cwd=' + workingDir;
 const RHMI_RES = path.join(APP_ROOT, 'rhmiData', 'resources');
 
@@ -126,8 +99,8 @@ class Settings {
         this.values = {};
         this.listeners = [];
         for (const s of this.schema) this.values[s.key] = s.default;
-        // Recover from an interrupted or corrupt primary write. Never reset
-        // user choices simply because the primary file cannot be parsed.
+        // Read legacy backup files from older builds, if the primary is missing.
+        // Version 0.4.12 saves directly to settings.json without creating backups.
         for (const candidate of [this.file, this.backup]) {
             try {
                 const saved = JSON.parse(fs.readFileSync(candidate, 'utf8'));
@@ -156,21 +129,19 @@ class Settings {
     }
     get(key) { return this.values[key]; }
     save() {
-        const temp = this.file + '.tmp-' + process.pid;
+        // Simple direct write to the app's MainApp-provisioned data directory,
+        // just as in the upstream MGU kit. No mkdir, temporary path or fallback.
         try {
-            if (!isDirectory(path.dirname(this.file)))
-                fs.mkdirSync(path.dirname(this.file), { recursive: true });
             const serialized = JSON.stringify(this.values, null, 1);
-            fs.writeFileSync(temp, serialized);
-            // A rename in the same directory replaces the file atomically,
-            // preventing a restart from observing half-written JSON.
-            fs.renameSync(temp, this.file);
-            fs.writeFileSync(this.backup, serialized);
+            fs.writeFileSync(this.file, serialized, 'utf8');
+            // Verify what the app can actually read back from the same file.
+            if (fs.readFileSync(this.file, 'utf8') !== serialized)
+                throw new Error('settings read-back does not match saved data');
             this.saveError = null;
         } catch (e) {
-            this.saveError = String(e && e.message || e);
+            this.saveError = (e && e.code ? e.code + ': ' : '') +
+                String(e && e.message || e);
             log.warn('settings save failed (' + this.file + '): ' + this.saveError);
-            try { fs.unlinkSync(temp); } catch (_) {}
         }
     }
     set(key, value) {

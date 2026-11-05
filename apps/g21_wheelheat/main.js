@@ -46,10 +46,8 @@ mgu.run({
             events.unshift({ at, kind, message: String(message).slice(0, 150) });
             events = events.slice(0, 60);
             try {
-                fs.mkdirSync(ctx.dataDir, { recursive: true });
-                const temp = eventFile + '.tmp-' + process.pid;
-                fs.writeFileSync(temp, JSON.stringify(events));
-                fs.renameSync(temp, eventFile);
+                // Event log uses the same app-private data dir; no directory creation.
+                fs.writeFileSync(eventFile, JSON.stringify(events), 'utf8');
                 eventWriteError = '';
             } catch (e) { eventWriteError = String(e.message || e); }
             ctx.log.info('[HEAT EVENT] ' + kind + ' ' + message);
@@ -321,7 +319,10 @@ mgu.run({
                     const disk = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
                     diskStatus = 'READ OK | Auto ' + String(disk.autoEnabled) +
                         ' | Limit ' + String(disk.belowTemp) + ' C';
-                } catch (e) { diskStatus = 'NOT READABLE: ' + String(e.code || e.message || e); }
+                } catch (e) {
+                    diskStatus = e && e.code === 'ENOENT' ? 'NO FILE YET (change a setting)' :
+                        'NOT READABLE: ' + String(e.code || e.message || e);
+                }
                 text(cv, 'Saved settings: ' + diskStatus.slice(0, 105),
                     52, 126, 22, diskStatus.startsWith('READ OK') ? t.accent : t.warn);
                 text(cv, 'Storage: ' + (ctx.settings.saveError || eventWriteError || 'no error reported').slice(0, 112),
