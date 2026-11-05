@@ -7,7 +7,7 @@ Four source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mg
 | `dpf_monitor` | 0.2.8 | Overview, DPF details, real regeneration odometer history and diagnostics; no simulated data |
 | `g21_ambient` | 0.3.10 | RGB picker and clear RAM01 E311 rejection diagnostics, no guessed alternate writes |
 | `g21_wheelheat` | 0.4.13 | Background autostart, persistent settings, original Log and offline full-diagnostic QR export |
-| `mgu_gamestation` | 0.1.0 (experimental) | NES, SNES, Game Boy/Color, Pong; two Wi-Fi smartphone controllers; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
+| `mgu_gamestation` | 0.2.0 (experimental) | NES, SNES, Game Boy/Color, Pong; iDrive singleplayer, phone singleplayer, two-phone multiplayer or hybrid; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 
@@ -20,6 +20,15 @@ legally obtained ROMs. Pong requires no ROM. The NES/SNES/GB/GBC emulation takes
 place inside the MGU process, not on the phones. Headunit CPU performance,
 vehicle audio and network reachability require in-car testing before the app
 can be called production ready. [Setup, limitations and licenses](apps/mgu_gamestation/README.md).
+
+From 0.2.0 the **Controller setup** setting also offers iDrive only, phone only,
+or hybrid (iDrive player 1 + phone player 2). The rotary controller uses tilt
+for directions, centre press for A, configurable clockwise / counterclockwise
+rotation as short button pulses, double press for START and long press for
+SELECT. In Pong the knob instead moves the paddle and the other player can be
+an offline CPU opponent. A complex SNES game's simultaneous button combinations
+may still require a smartphone controller. The iDrive input path needs the
+renderer and inputgate on the real MGU and is not verified on-car yet.
 
 ## WheelHeat autostart
 

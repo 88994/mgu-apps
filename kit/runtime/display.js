@@ -182,7 +182,14 @@ class Display {
                 this._lost();                       // (shows the HMI's bar again)
             }, 1500);
         });
-        gpu.on('ccu', (v) => { if (this.gpu !== gpu) return; if (this.onCcu && !this.own()) this.onCcu(v); else this._ccu(v); });
+        // A game can explicitly capture the knob even when the native renderer
+        // owns the full screen. Its callback wins only during that capture;
+        // Settings sheets always retain their normal knob navigation.
+        gpu.on('ccu', (v) => {
+            if (this.gpu !== gpu) return;
+            if (this.onCcu && (!this.own() || (this.grabbing && !this.sheet))) this.onCcu(v);
+            else this._ccu(v);
+        });
         gpu.on('touch', (phase, x, y) => { if (this.gpu === gpu) this._touch(phase, x, y); });
         // the HMI was touched outside the tabs: shown again unless that left the screen
         gpu.on('closed', () => setTimeout(() => { if (this.gpu === gpu) this._syncVisible(); }, 700));

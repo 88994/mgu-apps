@@ -11,6 +11,7 @@ const {NesGame} = require('../apps/mgu_gamestation/nes_core');
 const {GameBoyGame} = require('../apps/mgu_gamestation/gb_core');
 const {SnesGame, mask} = require('../apps/mgu_gamestation/snes_core');
 const {ControllerServer, privateAddress, validRom} = require('../apps/mgu_gamestation/controller_server');
+const {IDrivePad, padsForMode} = require('../apps/mgu_gamestation/idrive_pad');
 
 const quiet = {info() {}, warn() {}, error() {}};
 
@@ -54,7 +55,55 @@ function testCores() {
     pong.tick([{down: true}, {up: true}], 1);
     assert.ok(pong.left > 225 && pong.right < 225);
     pong.draw({roundRect() {}, fillRect() {}, text() {}, circle() {}}, 0, 0, 900, 450);
+    const solo = new Pong({cpuPlayer2: true});
+    solo.ballY = 400; solo.vx = 5;
+    solo.tick([{}, {}], 1);
+    assert.ok(solo.right > 225, 'Pong CPU must move the second paddle');
     console.log('ok: NES, GB/Color, SNES video; SNES two pads; Pong two players');
+}
+
+function testIDrive() {
+    let clock = 1000;
+    const pad = new IDrivePad({now: () => clock});
+    const evt = (counter, push, tilt) => ({frontRotaryEncoderOperation: counter,
+        frontRotaryEncoderPushButton: push, frontRotaryEncoderDeflection: tilt});
+    pad.raw(evt(65535, 0, 0));
+    assert.deepStrictEqual(pad.buttons(), {}, 'no gameplay before explicit enable');
+    pad.setEnabled(true);
+    clock += 10;
+    pad.raw(evt(0, 1, 1)); // counter wrap; short pressed; north tilt
+    let keys = pad.buttons();
+    assert.ok(keys.up && keys.a && keys.b, 'tilt, centre press and clockwise detent');
+    clock += 50;
+    pad.raw(evt(0, 0, 0)); // release
+    clock += 100;
+    pad.raw(evt(65535, 1, 10)); // anticlockwise, double press, west tilt
+    keys = pad.buttons();
+    assert.ok(keys.left && keys.a && keys.x && keys.start,
+        'left tilt, backwards detent and double-press START');
+    clock += 700;
+    pad.raw(evt(65535, 2, 0)); // physically still held, now long press
+    keys = pad.buttons();
+    assert.ok(keys.select && !keys.a, 'long press should be SELECT, not held A');
+    clock += 1601;
+    assert.deepStrictEqual(pad.buttons(), {}, 'stale input must release held buttons');
+    pad.setEnabled(false);
+    pad.raw(evt(1, 1, 7));
+    assert.deepStrictEqual(pad.buttons(), {}, 'disabled controls cannot start a game');
+
+    const phones = [{b: true}, {right: true}];
+    const local = {a: true};
+    assert.deepStrictEqual(padsForMode('idrive', local, phones), [local, {}]);
+    assert.deepStrictEqual(padsForMode('phone', local, phones), [phones[0], {}]);
+    assert.deepStrictEqual(padsForMode('phones', local, phones), phones);
+    assert.deepStrictEqual(padsForMode('hybrid', local, phones), [local, phones[1]]);
+
+    const wheel = new IDrivePad({now: () => clock});
+    wheel.setPong(true); wheel.setEnabled(true);
+    wheel.raw(evt(4, 0, 0)); clock += 10; wheel.raw(evt(6, 0, 0));
+    assert.ok(wheel.buttons().down && !wheel.buttons().b,
+        'Pong rotating clockwise moves paddle down rather than pressing B');
+    console.log('ok: iDrive tilt/press/rotation, long/double press, stale release, four controller modes');
 }
 
 function testProtocol() {
@@ -116,3 +165,4 @@ function testProtocol() {
 
 testCores();
 testProtocol();
+testIDrive();

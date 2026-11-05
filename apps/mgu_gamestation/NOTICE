@@ -1,4 +1,4 @@
-MGU GameStation v0.1.0
+MGU GameStation v0.2.0
 
 This app bundles the following emulator source modules (with module-format
 conversion, Node.js 8 compatibility and SNES diagnostic suppression;

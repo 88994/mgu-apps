@@ -14,6 +14,7 @@ const {Pong} = require('./arcade');
 const {NesGame} = require('./nes_core');
 const {GameBoyGame} = require('./gb_core');
 const {SnesGame} = require('./snes_core');
+const {IDrivePad, padsForMode} = require('./idrive_pad');
 const qrcode = require('./qr_vendor');
 
 const W = 1600, H = 520, IMAGE = 71;
@@ -54,6 +55,35 @@ mgu.run({
         const qr = [null, null];
         let roms = [];
         const log = ctx.log;
+        const idrive = new IDrivePad();
+        let grabbed = false, lastInputgateAt = 0;
+        const controllerMode = () => ctx.settings.get('controllerMode') || 'phones';
+        const useIDrive = () => controllerMode() === 'idrive' || controllerMode() === 'hybrid';
+        const singlePlayer = () => controllerMode() === 'idrive' || controllerMode() === 'phone';
+        const inputTitle = () => ({idrive: 'iDrive P1 / CPU P2', phone: 'Phone P1 / CPU P2',
+            phones: 'Two phones', hybrid: 'iDrive P1 + Phone P2'})[controllerMode()] || 'Two phones';
+        function configureIDrive() {
+            idrive.configure({turnClockwise: ctx.settings.get('idriveClockwise'),
+                turnCounterclockwise: ctx.settings.get('idriveCounterclockwise')});
+        }
+        configureIDrive();
+        ctx.settings.onChange(key => {
+            if (key === 'idriveClockwise' || key === 'idriveCounterclockwise') configureIDrive();
+        });
+        function receiveIDrive(v) { idrive.raw(v); }
+        if (ctx.controller && ctx.controller.onInput) ctx.controller.onInput(v => {
+            lastInputgateAt = Date.now();
+            receiveIDrive(v);
+        });
+        // Fallback when inputgate is absent: BMW FrontCCU SOME/IP stream.
+        // A recent inputgate event wins so a single click is not counted twice.
+        ctx.signals.watch('de.bmw.infotainment.controlelements.FrontCCU', '1', {
+            statusRotaryEncoderState: v => {
+                if (Date.now() - lastInputgateAt > 1000) receiveIDrive(v);
+            },
+        }, log).then(s => {
+            if (s && s.error) log.warn('[GameStation] FrontCCU signal: ' + s.error);
+        }).catch(e => log.warn('[GameStation] FrontCCU signal: ' + e.message));
 
         // Fail closed if the vehicle does not provide a valid, fresh speed.
         const speedOk = () => speed !== null && Date.now() - speedAt < 5000 && speed <= 0.5;
@@ -100,6 +130,9 @@ mgu.run({
         }
 
         function stopGame() {
+            if (grabbed && ctx.controller) ctx.controller.grab(false);
+            grabbed = false;
+            idrive.setEnabled(false);
             if (game && game.stop) {
                 try { game.stop(); } catch (e) { log.warn('[GameStation] Stop: ' + e.message); }
             }
@@ -120,7 +153,7 @@ mgu.run({
                 const spec = PLATFORMS[platform];
                 const name = roms[selection];
                 const paint = (pixels, width, height) => setImage(IMAGE, width, height, pixels);
-                if (spec.id === 'arcade') game = new Pong();
+                if (spec.id === 'arcade') game = new Pong({cpuPlayer2: singlePlayer()});
                 else {
                     const filename = path.join(ctx.dataDir, 'roms', spec.id, name);
                     const bytes = fs.readFileSync(filename);
@@ -130,6 +163,7 @@ mgu.run({
                     else if (spec.id === 'snes') game = new SnesGame(bytes, paint);
                 }
                 if (!game) throw new Error('Emulator unavailable');
+                idrive.setPong(game instanceof Pong);
                 gameName = name;
                 page = 'game'; status = ''; frameAt = Date.now();
                 log.info('[GameStation] Started: ' + spec.id + '/' + name);
@@ -149,6 +183,27 @@ mgu.run({
             if (page === 'game' || page === 'pair') back(); else play();
         });
         ctx.ui.onClick('BTN_PAIR', () => { if (page === 'game') stopGame(); page = page === 'pair' ? 'library' : 'pair'; });
+
+        function syncIDriveCapture() {
+            const shouldGrab = page === 'game' && !!game && useIDrive() && speedOk() &&
+                ctx.ui.isVisible('MAIN') && ctx.ui.hasFocus('MAIN');
+            if (shouldGrab === grabbed) return;
+            grabbed = shouldGrab;
+            idrive.setEnabled(shouldGrab);
+            if (ctx.controller) ctx.controller.grab(shouldGrab);
+            log.info('[GameStation] iDrive input ' + (shouldGrab ? 'captured' : 'released') +
+                ' mode=' + controllerMode());
+        }
+        const inputInterval = setInterval(syncIDriveCapture, 180);
+        process.on('exit', () => {
+            clearInterval(inputInterval);
+            if (grabbed && ctx.controller) ctx.controller.grab(false);
+        });
+        if (ctx.ui.onFocus) ctx.ui.onFocus(syncIDriveCapture);
+
+        function gamepads() {
+            return padsForMode(controllerMode(), idrive.buttons(), server.pads());
+        }
 
         let rendered = 0;
         const colors = () => {
@@ -174,6 +229,7 @@ mgu.run({
                 cv.target(x, 100, 370, 158, () => setPlatform(index), 'PLATFORM_' + index, 18);
             });
             txt(cv, 'GAME LIBRARY', 53, 312, 22, '#e6f3ff');
+            txt(cv, 'CONTROLLER: ' + inputTitle(), 520, 312, 17, '#88b6ca');
             if (roms.length > 6) {
                 button(cv, 'PREV', 805, 276, 155, 50,
                     () => {gameOffset = Math.max(0, gameOffset - 6);}, 'GAME_PREV');
@@ -189,7 +245,7 @@ mgu.run({
             } else {
                 roms.slice(gameOffset, gameOffset + 6).forEach((name, i) => {
                     const col = i % 3, row = Math.floor(i / 3), x = 40 + col * 516, y = 335 + row * 75;
-                    cv.roundRect(x, y, 495, 63, 10, selection === i ? '#29516b' : '#1c2d3e');
+                    cv.roundRect(x, y, 495, 63, 10, selection === i + gameOffset ? '#29516b' : '#1c2d3e');
                     txt(cv, name.length > 31 ? name.slice(0, 28) + '...' : name, x + 18, y + 38, 19, '#ffffff');
                     cv.target(x, y, 495, 63, () => play(i + gameOffset), 'GAME_' + (i + gameOffset), 10);
                 });
@@ -198,8 +254,8 @@ mgu.run({
             }
         }
         function drawPair(cv) {
-            txt(cv, 'TWO PHONES. ONE GAME.', 65, 89, 38, '#f3f8ff');
-            txt(cv, 'Join the BMW Wi-Fi hotspot on both phones, then scan a different code on each phone.',
+            txt(cv, 'CONNECT YOUR CONTROLLERS', 65, 89, 38, '#f3f8ff');
+            txt(cv, 'Controller setup: ' + inputTitle() + '. Join the BMW Wi-Fi hotspot to pair a phone.',
                 66, 129, 20, '#b3c6db');
             [0, 1].forEach(i => {
                 const x = i === 0 ? 185 : 870;
@@ -207,9 +263,13 @@ mgu.run({
                 txt(cv, 'PLAYER ' + (i + 1), x + 25, 202, 25, i === 0 ? '#62c7ff' : '#fd789f');
                 if (qr[i]) qrDraw(cv, qr[i], x + 24, 213, 226);
                 else txt(cv, serverStatus || 'No QR', x + 24, 302, 19, '#ffa68d');
-                const st = server.status()[i] ? 'CONNECTED' : 'WAITING FOR PHONE';
-                txt(cv, st, x + 265, 288, 20, server.status()[i] ? '#68e5ac' : '#fdc085');
-                txt(cv, 'Controller + ROM import', x + 265, 333, 17, '#adc5d6');
+                const local = useIDrive() && i === 0;
+                const st = local ? idrive.live() ? 'IDRIVE READY' : 'IDRIVE WAITING' :
+                    server.status()[i] ? 'CONNECTED' : 'WAITING FOR PHONE';
+                txt(cv, st, x + 265, 288, 20,
+                    (local ? idrive.live() : server.status()[i]) ? '#68e5ac' : '#fdc085');
+                txt(cv, local ? 'Phone QR: ROM import only' : 'Controller + ROM import',
+                    x + 265, 333, 17, '#adc5d6');
                 txt(cv, server.address + ':' + server.port, x + 265, 377, 17, '#739eb9');
             });
             if (server.error) txt(cv, 'Controller server error: ' + server.error.slice(0, 70),
@@ -219,8 +279,10 @@ mgu.run({
         function drawGame(cv) {
             const connected = server.status();
             txt(cv, gameName, 49, 77, 29, '#ffffff');
-            txt(cv, 'P1 ' + (connected[0] ? 'ON' : 'OFF') + '  /  P2 ' + (connected[1] ? 'ON' : 'OFF'),
-                1300, 76, 19, '#a8d6e2');
+            const p1 = useIDrive() ? 'IDRIVE ' + (idrive.live() ? 'ON' : 'WAIT') :
+                'PHONE ' + (connected[0] ? 'ON' : 'OFF');
+            const p2 = singlePlayer() ? 'CPU' : 'PHONE ' + (connected[1] ? 'ON' : 'OFF');
+            txt(cv, 'P1 ' + p1 + ' / P2 ' + p2, 1190, 76, 18, '#a8d6e2');
             if (game instanceof Pong) game.draw(cv, 210, 92, 1180, 385);
             else if (game) {
                 cv.fillRect(175, 88, 1250, 396, '#10151f');
@@ -234,9 +296,12 @@ mgu.run({
                 txt(cv, speedReason(), 800, 323, 22, '#f4e0dc', {align: 'center'});
             }
             button(cv, 'Exit', 1420, 446, 127, 55, back, 'GAME_EXIT');
+            if (useIDrive()) txt(cv, 'iDrive: tilt = D-pad | press = A | rotate = mapped buttons | double press = START | hold = SELECT',
+                49, 507, 15, '#90aebf');
         }
 
         ctx.loop('MAIN', 30, () => {
+            syncIDriveCapture();
             if (romsDirty && page === 'library') reloadGames();
             const cv = ctx.canvas(W, H), accent = colors().accent;
             cv.clear('#0c1726');
@@ -251,7 +316,8 @@ mgu.run({
                         const start = Date.now(), delta = Math.max(.5, Math.min(2, (now - frameAt) / 16.66));
                         frameAt = now;
                         try {
-                            game.tick(server.pads(), delta);
+                            if (game instanceof Pong) game.cpuPlayer2 = singlePlayer();
+                            game.tick(gamepads(), delta);
                             const time = Date.now() - start;
                             frameSlowness = time > 200 ? frameSlowness + 1 : 0;
                             if (frameSlowness > 2) throw new Error('Emulator exceeded 200 ms per frame');

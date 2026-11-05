@@ -6,8 +6,9 @@ const WIDTH = 900, HEIGHT = 450, PADDLE = 92;
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 class Pong {
-    constructor() {
+    constructor(options) {
         this.title = 'Arcade / Pong';
+        this.cpuPlayer2 = !!(options && options.cpuPlayer2);
         this.width = WIDTH; this.height = HEIGHT;
         this.left = HEIGHT / 2; this.right = HEIGHT / 2;
         this.scores = [0, 0]; this.reset(1);
@@ -17,7 +18,13 @@ class Pong {
         const dt = clamp(delta || 1, 0.5, 2.0);
         const p1 = pads[0] || {}, p2 = pads[1] || {};
         this.left = clamp(this.left + ((p1.down ? 1 : 0) - (p1.up ? 1 : 0)) * 7.5 * dt, PADDLE / 2 + 10, HEIGHT - PADDLE / 2 - 10);
-        this.right = clamp(this.right + ((p2.down ? 1 : 0) - (p2.up ? 1 : 0)) * 7.5 * dt, PADDLE / 2 + 10, HEIGHT - PADDLE / 2 - 10);
+        if (this.cpuPlayer2) {
+            // Deliberately imperfect AI: slower tracking than a human paddle.
+            const target = this.vx > 0 ? this.ballY : HEIGHT / 2;
+            this.right = clamp(this.right + clamp(target - this.right, -4.8 * dt, 4.8 * dt),
+                PADDLE / 2 + 10, HEIGHT - PADDLE / 2 - 10);
+        } else this.right = clamp(this.right + ((p2.down ? 1 : 0) - (p2.up ? 1 : 0)) * 7.5 * dt,
+            PADDLE / 2 + 10, HEIGHT - PADDLE / 2 - 10);
         this.ballX += this.vx * dt; this.ballY += this.vy * dt;
         if (this.ballY <= 11 || this.ballY >= HEIGHT - 11) { this.vy = -this.vy; this.ballY = clamp(this.ballY, 11, HEIGHT - 11); }
         const left = this.ballX < 52 && this.vx < 0 && Math.abs(this.ballY - this.left) < PADDLE / 2 + 8;
