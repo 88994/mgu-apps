@@ -8,6 +8,7 @@ const B = require('./logic');
 const { ComfortAuto } = require('./comfort_auto');
 const { SafeDiag, bytes } = require('./safe_diag');
 const QR = require('./qr_log');
+const Cycle = require('./cycle_policy');
 
 // Settings is automatically provided as ONE native tab by the renderer.
 const TABS = ['Comfort', 'Diagnostics', 'Log', 'QR Log'];
@@ -23,15 +24,16 @@ mgu.run({
         // Prevent a crash/restart of the OAP process from immediately
         // triggering another physical heating cycle in the same cold start.
         const appStartedAt = Date.now();
+        const repeatMinutes = () => Cycle.minutes(ctx.settings.get('cycleRepeatMins'));
         const previousCycle = Number(ctx.settings.get('_autoCycleAt'));
-        const restoredCycle = Number.isFinite(previousCycle) && previousCycle > 0 &&
-            appStartedAt >= previousCycle && appStartedAt - previousCycle < 30 * 60000;
+        const restoredCycle = Cycle.restore(previousCycle, appStartedAt, repeatMinutes());
         if (restoredCycle) auto.fired = true;
+        let lastCycleAt = restoredCycle ? previousCycle : 0;
         let cycleReason = restoredCycle ?
             'RESTORED: accepted ON ' + new Date(previousCycle).toISOString() +
             '; age=' + Math.round((appStartedAt - previousCycle) / 1000) +
-            's; window=1800s (restart does not reset)' :
-            'NO RESTORED CYCLE: no accepted ON marker in the last 30 minutes';
+            's; cooldown=' + repeatMinutes() + 'm (restart does not reset)' :
+            'NO RESTORED CYCLE: no accepted ON marker within ' + repeatMinutes() + 'm';
         let cycleSaved = false;
         const outside = { value: null, at: 0, raw: null };
         const acknowledged = new Set();
@@ -79,7 +81,12 @@ mgu.run({
                             new Date(marker).toISOString() : null,
                         markerAgeSeconds: Number.isFinite(marker) && marker > 0 ?
                             Math.round((now - marker) / 1000) : null,
-                        antiRepeatWindowSeconds: 1800,
+                        repeatMinutes: repeatMinutes(),
+                        lastCycleAttemptOrAckAt: lastCycleAt > 0 ?
+                            new Date(lastCycleAt).toISOString() : null,
+                        nextRepeatEligibleAt: lastCycleAt > 0 ?
+                            new Date(lastCycleAt + repeatMinutes() * 60000).toISOString() : null,
+                        repeatRequiresFreshMovingSpeed: true,
                         coldDwellStart: auto.coldSince,
                         activeHeaters: Array.from(auto.active).map(([name, state]) =>
                             ({ name, deadline: state.deadline, nextRenewAt: state.nextRenewAt })),
@@ -205,11 +212,13 @@ mgu.run({
             if (ok && intent.type === 'ON' && !cycleSaved) {
                 cycleSaved = true;
                 const acceptedAt = Date.now();
+                lastCycleAt = acceptedAt;
                 ctx.settings.set('_autoCycleAt', acceptedAt);
                 cycleReason = 'POSITIVE BDC ON ACK: ' + intent.device + ' at ' +
                     new Date(acceptedAt).toISOString() +
                     '; marker file=' + (ctx.settings.saveError ? 'FAILED' : 'OK') +
-                    '; physical heating still unverified';
+                    '; repeat after ' + repeatMinutes() +
+                    'm if moving; physical heating still unverified';
                 record('CYCLE', cycleReason);
             }
             return ok;
@@ -254,6 +263,21 @@ mgu.run({
             busy = true;
             try {
                 const now = Date.now(), cfg = config(), reading = tempReading(now);
+                const recycle = Cycle.check({
+                    now, fired: auto.fired, lastCycleAt,
+                    repeatMinutes: repeatMinutes(),
+                    activeCount: auto.active.size,
+                    motionKnown: ctl.motionKnown, speedKmh: ctl.speed,
+                });
+                if (recycle.ready && auto.rearm()) {
+                    const oldCycleAt = lastCycleAt;
+                    lastCycleAt = 0;
+                    cycleSaved = false;
+                    cycleReason = 'RE-ARMED after ' + repeatMinutes() +
+                        'm: previous cycle at ' + new Date(oldCycleAt).toISOString() +
+                        '; fresh moving speed=' + ctl.speed.toFixed(1) + ' km/h';
+                    record('RECYCLE', cycleReason);
+                }
                 const canStart = cfg.autoEnabled && permitted() && ctl.online && ctl.motionKnown;
                 // Start, extend or stop a confirmed comfort-heating cycle while
                 // moving as long as speed data are fresh and BDC accepts writes.
@@ -263,18 +287,20 @@ mgu.run({
                     : now - reading.at > 120000 ? 'STALE TEMP'
                     : !ctl.online ? 'NO TASU CONNECTION'
                     : !ctl.motionKnown ? 'NO FRESH SPEED'
-                    : auto.fired ? 'CYCLE ALREADY RUN' :
+                    : auto.fired ? (recycle.reason === 'await-moving' ?
+                        'RECYCLE WAITING FOR MOTION' : 'CYCLE ALREADY RUN') :
                         reading.value > cfg.belowTemp ? 'ABOVE LIMIT' : 'COLD DWELL / READY';
                 if (plannerStatus !== lastPlannerStatus) {
                     record('AUTO', plannerStatus + '; T=' +
                         (reading.value === null ? '--' : reading.value.toFixed(1)) +
-                        ' C, limit=' + cfg.belowTemp + ' C');
+                        ' C, limit=' + cfg.belowTemp + ' C, repeat=' + repeatMinutes() + 'm');
                     lastPlannerStatus = plannerStatus;
                 }
                 const wasFired = auto.fired;
                 const intents = auto.step({ now, tempC: reading.value, tempAt: reading.at,
                     cfg: Object.assign({}, cfg, { autoEnabled: enabledForPlanner }) });
                 if (!wasFired && auto.fired) {
+                    lastCycleAt = now;
                     cycleReason = 'IN-MEMORY PLANNER FIRED after cold dwell at ' +
                         new Date(now).toISOString() + '; intents=' + intents.length +
                         '; ECU confirmation not yet known';
@@ -390,7 +416,9 @@ mgu.run({
                 try {
                     const disk = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
                     diskStatus = 'READ OK | Auto ' + String(disk.autoEnabled) +
-                        ' | Limit ' + String(disk.belowTemp) + ' C';
+                        ' | Limit ' + String(disk.belowTemp) + ' C' +
+                        ' | Repeat ' + String(disk.cycleRepeatMins === undefined ?
+                            30 : disk.cycleRepeatMins) + 'm';
                 } catch (e) {
                     diskStatus = e && e.code === 'ENOENT' ? 'NO FILE YET (change a setting)' :
                         'NOT READABLE: ' + String(e.code || e.message || e);

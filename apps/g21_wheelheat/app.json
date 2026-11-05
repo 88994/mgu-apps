@@ -2,7 +2,7 @@
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
   "description": "Persistent cold-weather heating automation with motion-aware BDC commands and readback",
-  "version": "0.4.13",
+  "version": "0.4.14",
   "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
@@ -70,6 +70,21 @@
         15,
         18,
         20
+      ]
+    },
+    {
+      "key": "cycleRepeatMins",
+      "label": "Repeat automatic cycle after",
+      "type": "number",
+      "unit": "min",
+      "default": 30,
+      "steps": [
+        30,
+        45,
+        60,
+        90,
+        120,
+        180
       ]
     },
     {
