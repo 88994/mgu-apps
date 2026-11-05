@@ -26,14 +26,35 @@ mgu.run({
         const appStartedAt = Date.now();
         const repeatMinutes = () => Cycle.minutes(ctx.settings.get('cycleRepeatMins'));
         const previousCycle = Number(ctx.settings.get('_autoCycleAt'));
-        const restoredCycle = Cycle.restore(previousCycle, appStartedAt, repeatMinutes());
+        // A one-time, explicit TEST skips only the repeat lockout at the NEXT
+        // OAP/Headunit launch. It never turns heating on by itself, overrides
+        // the user's autoEnabled opt-in, or simulates temperature or speed.
+        // Fail closed unless disabling the test is verified on disk, otherwise
+        // a write failure could make every subsequent restart skip cooldown.
+        const testRequested = ctx.settings.get('testNextStartup') === true;
+        let testConsumed = false, testError = '';
+        if (testRequested) {
+            try {
+                ctx.settings.set('testNextStartup', false);
+                const saved = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
+                testConsumed = saved.testNextStartup === false;
+                if (!testConsumed) testError = 'Could not verify one-shot reset in settings.json';
+            } catch (e) {
+                testError = String(e && (e.code || e.message) || e);
+            }
+        }
+        const restoredCycle = !testConsumed &&
+            Cycle.restore(previousCycle, appStartedAt, repeatMinutes());
         if (restoredCycle) auto.fired = true;
         let lastCycleAt = restoredCycle ? previousCycle : 0;
-        let cycleReason = restoredCycle ?
-            'RESTORED: accepted ON ' + new Date(previousCycle).toISOString() +
-            '; age=' + Math.round((appStartedAt - previousCycle) / 1000) +
-            's; cooldown=' + repeatMinutes() + 'm (restart does not reset)' :
-            'NO RESTORED CYCLE: no accepted ON marker within ' + repeatMinutes() + 'm';
+        let cycleReason = testConsumed ?
+            'ONE-SHOT TEST: cooldown bypassed for this app launch only; '
+                + 'normal temperature/BDC/fresh speed safeguards still required' :
+            restoredCycle ?
+                'RESTORED: accepted ON ' + new Date(previousCycle).toISOString() +
+                '; age=' + Math.round((appStartedAt - previousCycle) / 1000) +
+                's; cooldown=' + repeatMinutes() + 'm (restart does not reset)' :
+                'NO RESTORED CYCLE: no accepted ON marker within ' + repeatMinutes() + 'm';
         let cycleSaved = false;
         const outside = { value: null, at: 0, raw: null };
         const acknowledged = new Set();
@@ -64,6 +85,11 @@ mgu.run({
         record('START', 'auto=' + ctx.settings.get('autoEnabled') +
             ' limit=' + ctx.settings.get('belowTemp') + ' C; loaded=' +
             ctx.settings.loadSource + '; data=' + ctx.dataDir);
+        if (testRequested)
+            record(testConsumed ? 'TEST' : 'TEST BLOCKED',
+                testConsumed ?
+                    'One-shot startup test consumed; repeat cooldown bypassed on this launch' :
+                    'One-shot startup test denied (reset not confirmed): ' + testError);
         record('CYCLE', cycleReason);
         let lastPlannerStatus = '';
         let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
@@ -77,6 +103,9 @@ mgu.run({
                     state: {
                         appStartedAt: new Date(appStartedAt).toISOString(),
                         cycleReason, cycleAlreadyRun: auto.fired,
+                        oneShotTestRequestedAtStartup: testRequested,
+                        oneShotTestAppliedAtStartup: testConsumed,
+                        oneShotTestResetError: testError || null,
                         previousPositiveAckOnAt: Number.isFinite(marker) && marker > 0 ?
                             new Date(marker).toISOString() : null,
                         markerAgeSeconds: Number.isFinite(marker) && marker > 0 ?

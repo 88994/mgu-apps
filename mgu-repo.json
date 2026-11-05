@@ -51,7 +51,7 @@
       "id": "g21_wheelheat",
       "kind": "app",
       "title": "G21 Heating Comfort",
-      "version": "0.4.14",
+      "version": "0.4.15",
       "path": "apps/g21_wheelheat",
       "icon": "icon.png",
       "mguHmi": [
@@ -77,14 +77,18 @@
       "version": "0.2.0",
       "path": "apps/mgu_gamestation",
       "icon": "icon.png",
-      "mguHmi": ["ID7"],
+      "mguHmi": [
+        "ID7"
+      ],
       "requires": {
         "idrive7-renderd": "2.1.6",
         "mgu-inputgate": "1.0.0"
       },
       "build": {
         "python": "tools/build_store_app.py",
-        "args": ["{id}"],
+        "args": [
+          "{id}"
+        ],
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
