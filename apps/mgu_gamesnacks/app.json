@@ -1,0 +1,27 @@
+{
+  "id": "mgu_gamesnacks",
+  "title": "MGU GameSnacks (Preview)",
+  "description": "Standalone offline HTML5 game catalog prototype; original games require individually verified distribution rights and MGU browser support",
+  "version": "0.1.1",
+  "vendor": "G21 Offline Lab (unofficial)",
+  "loggingId": "OGSN",
+  "iconGlyph": "GS",
+  "cpuLimit": 35,
+  "maxDiskUsage": 134217728,
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": {"statusCarSpeed2": "rs"}
+  },
+  "screens": [
+    {"name": "MAIN", "kind": "canvas", "title": "MGU GameSnacks", "buttons": [
+      ["BTN_NEXT", "Next game"],
+      ["BTN_DETAILS", "Details"],
+      ["BTN_TOUCH", "Touch test"],
+      ["BTN_BACK", "Back"],
+      ["BTN_SETTINGS", "Settings"]
+    ]}
+  ],
+  "settings": [
+    {"key": "theme", "label": "Colour theme", "type": "choice", "default": "ice",
+      "options": [["ice", "Ice White"], ["amber", "Night Amber"]]}
+  ]
+}
