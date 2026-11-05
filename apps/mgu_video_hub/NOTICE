@@ -1,0 +1,14 @@
+MGU Video Hub v0.1.0
+
+Included third-party code:
+
+1. QR Code Generator for JavaScript, Copyright (c) 2009 Kazuhiko Arase.
+   https://github.com/kazuhikoarase/qrcode-generator
+   MIT License (QR_VENDOR_LICENSE.txt).
+
+2. MGU App Kit from cauliflowermossgrape/idrive7-apps, Copyright (c) 2026
+   cauliflowermossgrape, under MIT. See root THIRD_PARTY_NOTICES.md and
+   the repository kit source license headers.
+
+No YouTube media, video codec, ffmpeg, yt-dlp, DRM key or BMW proprietary
+oap-sdk code is bundled in this application.

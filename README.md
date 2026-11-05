@@ -1,6 +1,6 @@
 # MGU Apps — BMW iDrive 7
 
-Four source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
+Six source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
 
 | App | Version | Function |
 | --- | --- | --- |
@@ -8,6 +8,8 @@ Four source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mg
 | `g21_ambient` | 0.3.10 | RGB picker and clear RAM01 E311 rejection diagnostics, no guessed alternate writes |
 | `g21_wheelheat` | 0.4.15 | Background autostart, configurable heating repeat cooldown, persistent settings and offline full-diagnostic QR export |
 | `mgu_gamestation` | 0.2.0 (experimental) | NES, SNES, Game Boy/Color, Pong; iDrive singleplayer, phone singleplayer, two-phone multiplayer or hybrid; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
+| `mgu_gamesnacks` | 0.1.1 (preview) | Offline HTML5 game catalog and touch diagnostic preview; original game distribution and browser compatibility still under review. |
+| `mgu_video_hub` | 0.1.0 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 
@@ -29,6 +31,17 @@ SELECT. In Pong the knob instead moves the paddle and the other player can be
 an offline CPU opponent. A complex SNES game's simultaneous button combinations
 may still require a smartphone controller. The iDrive input path needs the
 renderer and inputgate on the real MGU and is not verified on-car yet.
+
+## Video Hub (experimental)
+
+`mgu_video_hub` is a separate app for local videos and YouTube links. The
+MGU rendering interface supports video frames, but it does not include a web
+browser or a video decoder: actual playback requires a compatible `ffmpeg`
+on the head unit; YouTube also needs an Internet route and `yt-dlp`. No
+decoder or videos are bundled. Audio is disabled by default and BMW audio
+routing is unverified. The phone import uses port 18879 with a random QR
+token; BMW CarPlay Wi-Fi Direct is not confirmed to allow access to it.
+See [Video Hub setup and limitations](apps/mgu_video_hub/README.md).
 
 ## WheelHeat autostart
 

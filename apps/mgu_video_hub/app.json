@@ -1,0 +1,40 @@
+{
+  "id": "mgu_video_hub",
+  "title": "MGU Video Hub",
+  "description": "Parked-only video library with optional YouTube stream support and phone import",
+  "version": "0.1.0",
+  "vendor": "G21 Offline Lab",
+  "loggingId": "OVH1",
+  "iconGlyph": "VIDEO",
+  "cpuLimit": 80,
+  "maxDiskUsage": 1073741824,
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": {"statusCarSpeed2": "rs"}
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "MGU Video Hub",
+      "buttons": [
+        ["BTN_TAB", "Next tab"],
+        ["BTN_ACTION", "Play / Pause"],
+        ["BTN_BACK", "Back"],
+        ["BTN_IMPORT", "Phone / USB"],
+        ["BTN_SETTINGS", "Settings"]
+      ]
+    }
+  ],
+  "settings": [
+    {"key":"theme", "label":"Colour theme", "type":"choice", "default":"ice",
+      "options":[["ice","Ice White"],["m_tricolour","M Tricolour"],["amber","Night Amber"]]},
+    {"key":"layout", "label":"Screen layout", "type":"choice", "default":"full",
+      "options":[["full","Full screen"],["standard","Standard"]]},
+    {"key":"renderer", "label":"Renderer", "type":"choice", "default":"auto",
+      "options":[["auto","GPU"],["software","Software (no video)"]]},
+    {"key":"resolution", "label":"Decode resolution", "type":"choice", "default":"640",
+      "options":[["640","640 x 360 (recommended)"],["960","960 x 540"]]},
+    {"key":"audio", "label":"Audio output (experimental)", "type":"choice", "default":"off",
+      "options":[["off","Off - video only"],["alsa","ALSA - requires aplay"]]}
+  ]
+}

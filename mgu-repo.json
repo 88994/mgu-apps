@@ -111,6 +111,25 @@
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
+    },
+    {
+      "id": "mgu_video_hub",
+      "kind": "app",
+      "title": "MGU Video Hub",
+      "version": "0.1.0",
+      "path": "apps/mgu_video_hub",
+      "icon": "icon.png",
+      "mguHmi": ["ID7"],
+      "requires": {
+        "idrive7-renderd": "2.1.6",
+        "mgu-inputgate": "1.0.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": ["{id}"],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
     }
   ]
 }
