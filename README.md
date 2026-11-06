@@ -1,6 +1,6 @@
 # MGU Apps — BMW iDrive 7
 
-Six source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
+Seven source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
 
 | App | Version | Function |
 | --- | --- | --- |
@@ -10,8 +10,13 @@ Six source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu
 | `mgu_gamestation` | 0.2.0 (experimental) | NES, SNES, Game Boy/Color, Pong; iDrive singleplayer, phone singleplayer, two-phone multiplayer or hybrid; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
 | `mgu_gamesnacks` | 0.1.1 (preview) | Offline HTML5 game catalog and touch diagnostic preview; original game distribution and browser compatibility still under review. |
 | `mgu_video_hub` | 0.1.0 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
+| `custom_cluster` | 0.2.0 (experimental) | G80-inspired full cluster (parked test), optional Waze map and original BMW display; real car rendering unverified. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
+
+## Custom Cluster (experimental)
+
+`custom_cluster` uses the installed `cluster-render` service shared with Waze on Cluster; the Store dependency is `cluster-render` 0.4.0. Waze on Cluster remains optional. BMW stock is the default. The G80-inspired 1920 × 720 panel runs only in a manually armed 12-second test in P with live speed/RPM signals. It has not been tested on the real KOMBI and must not be used for driving. The combined Waze panel/map, HUD conflict and warning visibility still need tests on KOMBSP18. [Setup, tests and limitations](apps/custom_cluster/README.md).
 
 ## GameStation (experimental)
 

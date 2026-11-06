@@ -138,6 +138,28 @@
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
+    },
+    {
+      "id": "custom_cluster",
+      "kind": "app",
+      "title": "Custom Cluster",
+      "version": "0.2.0",
+      "path": "apps/custom_cluster",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "cluster-render": "0.4.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
     }
   ]
 }

@@ -1,0 +1,8 @@
+This app incorporates cluster_render_client.js from:
+  https://github.com/robertnisipeanu/idrive-apps
+Copyright (C) 2026 Robert Nisipeanu
+SPDX-License-Identifier: MPL-2.0
+The full Mozilla Public License 2.0 is included as LICENSE.
+
+All BMW names and marks belong to their respective owners.
+Unofficial prototype; neither BMW nor upstream project authors endorse it.
