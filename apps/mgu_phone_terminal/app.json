@@ -2,7 +2,7 @@
   "id": "mgu_phone_terminal",
   "title": "Phone Terminal",
   "description": "Secure QR pairing for a temporary mobile terminal on the MGU",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "vendor": "Jürgen",
   "loggingId": "OTRM",
   "iconGlyph": ">_",

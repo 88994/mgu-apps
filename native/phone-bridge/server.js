@@ -89,7 +89,7 @@ function makeBridge(options) {
     const now = options.now || Date.now;
     let controlKey = null, pairToken = null, pairUntil = 0;
     let sessionToken = null, sessionUntil = 0, running = false, runningProc = null, failureCount = 0, blockUntil = 0;
-    let localServer, publicServer, keyPoll;
+    let localServer, publicServer, keyPoll, provisionError = 'waiting for app registration';
 
     function terminateCommand() {
         if (!runningProc) return;
@@ -99,8 +99,13 @@ function makeBridge(options) {
 
     function ensureKey() {
         if (controlKey) return controlKey;
-        try { controlKey = secretFromDataDir(findDataDir(options)); }
-        catch (e) { return null; }
+        try { controlKey = secretFromDataDir(findDataDir(options)); provisionError = ''; }
+        catch (e) {
+            const reason = e && (e.code || e.message) || 'unknown error';
+            if (provisionError !== reason) console.warn('[phone-bridge] key provisioning pending:', reason);
+            provisionError = reason;
+            return null;
+        }
         return controlKey;
     }
     function closed() {
@@ -111,12 +116,12 @@ function makeBridge(options) {
     function revoke() { terminateCommand(); pairToken = null; pairUntil = 0; sessionToken = null; sessionUntil = 0; }
     function status() {
         closed();
-        return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0, addresses: addresses(), port: publicPort, version: '0.1.0' };
+        return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0, addresses: addresses(), port: publicPort, version: '0.1.1' };
     }
 
     function local(req, res) {
         const key = ensureKey();
-        if (!key) return send(res, 503, { error: 'Waiting for Phone Terminal app data directory' });
+        if (!key) return send(res, 503, { error: 'App data/key not available (' + provisionError + ')' });
         if (!same(req.headers['x-bridge-key'], key)) return send(res, 403, { error: 'Forbidden' });
         const route = String(req.url || '').split('?')[0];
         if (req.method === 'GET' && route === '/local/status') return send(res, 200, status());

@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { makeBridge } = require('../native/phone-bridge/server');
+const { localKey } = require('../apps/mgu_phone_terminal/control');
 
 function httpRequest(port, method, endpoint, body, extra) {
     return new Promise((resolve, reject) => {
@@ -100,4 +101,25 @@ async function testLateInstall() {
     }
 }
 
-test().then(testLateInstall).catch((e) => { console.error(e.stack || e); process.exitCode = 1; });
+async function testAppOwnedKey() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mgu-bridge-app-key-'));
+    try {
+        const firstKey = localKey(dir);
+        assert.strictEqual(firstKey.length, 64, 'app should provision its own 256-bit control key');
+        assert.strictEqual(localKey(dir), firstKey, 'app should retain the existing key');
+        assert.strictEqual(fs.statSync(path.join(dir, 'phone-bridge.key')).mode & 0o077, 0, 'key must not be group/world readable');
+        const bridge = makeBridge({ dataDir: dir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1' });
+        const ports = await bridge.start();
+        try {
+            const response = await httpRequest(ports.localPort, 'GET', '/local/status', null, { 'X-Bridge-Key': firstKey });
+            assert.strictEqual(response.status, 200, 'daemon should accept an app-provisioned key');
+        } finally { await bridge.stop(); }
+        console.log('App-owned key test passed');
+    } finally {
+        const keyFile = path.join(dir, 'phone-bridge.key');
+        if (fs.existsSync(keyFile)) fs.unlinkSync(keyFile);
+        fs.rmdirSync(dir);
+    }
+}
+
+test().then(testLateInstall).then(testAppOwnedKey).catch((e) => { console.error(e.stack || e); process.exitCode = 1; });

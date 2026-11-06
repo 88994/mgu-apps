@@ -79,8 +79,16 @@ mgu.run({
             cv.text(stateText, 92, 194, 27, err ? C.red : alive || info && info.state === 'active' ? C.green : C.amber, { font: 'bold' });
 
             if (err) {
-                cv.text(err.slice(0, 58), 70, 254, 23, C.red);
-                cv.text('Install / start the Phone Terminal Bridge tool first.', 70, 295, 22, C.muted);
+                cv.text(err.slice(0, 48), 70, 254, 23, C.red);
+                if (err.length > 48) cv.text(err.slice(48, 95), 70, 286, 22, C.red);
+                const hint = /ECONNREFUSED|timeout/i.test(err)
+                    ? 'Bridge service offline: update the tool, then restart iDrive.'
+                    : /HTTP 503/i.test(err)
+                        ? 'Bridge running but app registration/key is not ready.'
+                        : /App key setup/i.test(err)
+                            ? 'Check that this app can write its own data directory.'
+                            : 'Check the Bridge tool version and restart the app.';
+                cv.text(hint, 70, 335, 20, C.muted);
             } else if (info) {
                 cv.text('Address: ' + (selected ? selected.ip + ':18890  (' + selected.interface + ')' : 'No reachable IPv4 interface'), 70, 255, 26, C.white);
                 cv.text('Network: phone must reach this IP directly', 70, 295, 23, C.muted);
