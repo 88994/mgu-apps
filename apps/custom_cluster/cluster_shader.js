@@ -106,5 +106,9 @@ void main() {
     outc.rgb=mix(outc.rgb,vec3(0.38,1.0,0.65),inner);
     outc.a=max(outc.a,b);
   }
+  // Keep the native map's 504x368 guidance-safe area fully unobstructed.
+  // This applies to Sport, Classic and Minimal, regardless of accent colour.
+  float mapSafe=box(p,vec2(538.0,256.0),vec2(252.0,184.0));
+  outc.a*=1.0-mapSafe;
   gl_FragColor=outc;
 }`;

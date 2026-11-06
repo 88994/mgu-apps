@@ -4,10 +4,8 @@
 const { ClusterRender } = require('./cluster_render_client.js');
 const fragmentShader = require('./cluster_shader.js');
 const g80Shader = require('./g80_panel_shader.js');
-const COLORS = {
-    m: [0.08, 0.70, 1.0, 1], red: [1.0, 0.16, 0.24, 1],
-    ice: [0.75, 0.92, 1.0, 1], amber: [1.0, 0.58, 0.16, 1],
-};
+const { PALETTE, resolveColor, colorHex } = require('./cluster_colors.js');
+const COLORS = Object.keys(PALETTE).reduce((m, k) => { m[k] = PALETTE[k].concat([1]); return m; }, {});
 const BADGE_FS = `#version 100
 precision mediump float;
 varying vec2 v_uv;
@@ -19,7 +17,7 @@ void main() {
   vec3 c=mix(vec3(0.03,0.26,0.17),vec3(0.36,1.0,0.60),inside);
   gl_FragColor=vec4(c,outside);
 }`;
-const MODES = { stock: 0, sport: 1, classic: 2, minimal: 3, g80: 4 };
+const MODES = { stock: 0, sport: 1, classic: 2, minimal: 3, g80: 4, oem: 5 };
 const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 const PANEL_TEST_MS = 12000;
 
@@ -35,7 +33,8 @@ class ClusterLayers {
         this.targetState = 'unknown';
         this.lastSample = 0;
         this.data = {};
-        this.options = { layout: 'stock', accent: 'm', phoneBadge: false, wazeMap: 'auto' };
+        this.options = { layout: 'stock', accent: 'm', phoneBadge: false, wazeMap: 'auto',
+            colorMode: 'palette', colorBrightness: 100 };
         this.phoneOpen = false;
         this.lastSent = 0;
         this.armedUntil = 0;
@@ -82,7 +81,9 @@ class ClusterLayers {
     parked() { return this.live() && this.data.stage === 'P' && this.data.speed >= 0 && this.data.speed < 0.5; }
     armPanel() {
         if (this.armedUntil) { this.disarm('Stopped by user'); this.apply(); return false; }
-        if (this.options.layout !== 'g80') { this.disarmReason = 'Choose G80 first'; return false; }
+        if (this.options.layout !== 'g80' && this.options.layout !== 'oem') {
+            this.disarmReason = 'Choose a full-panel design first'; return false;
+        }
         if (!this.parked()) { this.disarmReason = 'Real speed and gear P required'; return false; }
         if (!this.ready) { this.disarmReason = 'Renderer not connected'; return false; }
         this.armedUntil = Date.now() + PANEL_TEST_MS;
@@ -101,7 +102,7 @@ class ClusterLayers {
         if (this.armedUntil && (!this.parked() || Date.now() >= this.armedUntil)) {
             this.disarm(this.parked() ? 'Test timeout — original cluster restored' : 'Left P, moving, or stale data');
         }
-        const panelActive = mode === 4 && this.armedUntil > Date.now() && this.parked();
+        const panelActive = (mode === 4 || mode === 5) && this.armedUntil > Date.now() && this.parked();
         if (panelActive && !this.panelRef) {
             this.panelRef = this.cr.effect({ target: 'panel', klass: 'overlay',
                 contend: true, guide_hold: false, x: 0, y: 0, w: 1920, h: 720,
@@ -112,7 +113,9 @@ class ClusterLayers {
         const show = mode > 0 && mode < 4 && valid;
         if (show && !this.effectRef) {
             this.effectRef = this.cr.effect({ target: 'map', klass: 'overlay',
-                contend: true, guide_hold: false, x: 0, y: 0, w: 1088, h: 480,
+                // NEVER evict the BMW stock map merely to show coloured dials.
+                // Waze may hold the map slot; otherwise the OEM map wins.
+                contend: false, guide_hold: false, x: 0, y: 0, w: 1088, h: 480,
                 fs: fragmentShader });
         }
         if (!show && this.effectRef) { this.cr.drop(this.effectRef); this.effectRef = 0; }
@@ -120,9 +123,9 @@ class ClusterLayers {
             const d = this.data;
             this.cr.uniform(this.panelRef, 'u_values', [d.speed, d.rpm, finite(d.oil) ? d.oil : -1,
                 finite(d.coolant) ? d.coolant : -1]);
-            this.cr.uniform(this.panelRef, 'u_options', [this.options.wazeMap !== 'off' ? 1 : 0,
-                finite(d.gear) ? d.gear : 0, this.options.phoneBadge && this.phoneOpen ? 1 : 0, 0]);
-            this.cr.uniform(this.panelRef, 'u_accent', COLORS[this.options.accent] || COLORS.m);
+            this.cr.uniform(this.panelRef, 'u_options', [1,
+                finite(d.gear) ? d.gear : 0, this.options.phoneBadge && this.phoneOpen ? 1 : 0, mode === 5 ? 1 : 0]);
+            this.cr.uniform(this.panelRef, 'u_accent', resolveColor(this.options, Date.now()));
             this.lastSent = Date.now();
         }
         if (show && this.effectRef && Date.now() - this.lastSent >= 150) {
@@ -130,7 +133,7 @@ class ClusterLayers {
             this.cr.uniform(this.effectRef, 'u_values', [d.speed, d.rpm, finite(d.oil) ? d.oil : -1,
                 finite(d.coolant) ? d.coolant : -1]);
             this.cr.uniform(this.effectRef, 'u_style', [mode, 1, 0, 0]);
-            this.cr.uniform(this.effectRef, 'u_accent', COLORS[this.options.accent] || COLORS.m);
+            this.cr.uniform(this.effectRef, 'u_accent', resolveColor(this.options, Date.now()));
             this.lastSent = Date.now();
         }
         const wantBadge = this.options.phoneBadge && this.phoneOpen && !panelActive;
@@ -146,7 +149,8 @@ class ClusterLayers {
         return { ready: this.ready, layer: this.layerState, target: this.targetState,
             live: this.live(), layout: this.options.layout, parked: this.parked(),
             panelActive: !!this.panelRef, disarmReason: this.disarmReason,
-            secondsLeft: this.panelRef ? Math.max(0, Math.ceil((this.armedUntil - Date.now()) / 1000)) : 0 };
+            secondsLeft: this.panelRef ? Math.max(0, Math.ceil((this.armedUntil - Date.now()) / 1000)) : 0,
+            color: colorHex(resolveColor(this.options, Date.now())) };
     }
     close() { this.disarm('App closed'); this.cr.close(); }
 }

@@ -9,7 +9,7 @@ precision highp float;
 varying vec2 v_uv;
 uniform vec4 u_values;    // speed, rpm, oil, coolant
 uniform vec4 u_accent;    // selected tint
-uniform vec4 u_options;   // show-map-window, gear, phone badge, reserved
+uniform vec4 u_options;   // always-open map window, gear, phone badge, OEM-style variant
 
 float rect(vec2 p, vec2 c, vec2 halfSize) {
   vec2 d=abs(p-c)-halfSize;
@@ -53,7 +53,8 @@ float numeral(vec2 p,float value,float count,float scale) {
 }
 void main(){
   vec2 p=vec2(v_uv.x*1920.,v_uv.y*720.);
-  vec3 bg=vec3(0.007,0.014,0.028);
+  float oem=step(0.5,u_options.w);
+  vec3 bg=mix(vec3(0.007,0.014,0.028),vec3(0.009,0.012,0.017),oem);
   vec3 white=vec3(0.91,0.95,1.0);
   vec3 blue=u_accent.rgb;
   float shade=1.-0.35*length((p-vec2(960.,360.))/vec2(1100.,720.));
@@ -70,11 +71,11 @@ void main(){
   float angleR=mod(ar+6.2831853,6.2831853);
   float speed=clamp(u_values.x/260.,0.,1.);
   float rpm=clamp(u_values.y/5000.,0.,1.);
-  float track=max(ring(p,left,258.,3.1),ring(p,right,258.,3.1));
-  color=mix(color,vec3(.11,.16,.25),track*.85);
+  float track=max(ring(p,left,258.,mix(3.1,2.0,oem)),ring(p,right,258.,mix(3.1,2.0,oem)));
+  color=mix(color,mix(vec3(.11,.16,.25),vec3(.13,.14,.16),oem),track*.85);
   float progressL=step(0.22,angleL)*step(angleL,0.22+speed*5.65);
   float progressR=step(0.22,angleR)*step(angleR,0.22+rpm*5.65);
-  float progress=max(ring(p,left,253.,9.)*progressL,ring(p,right,253.,9.)*progressR);
+  float progress=max(ring(p,left,253.,mix(9.,5.,oem))*progressL,ring(p,right,253.,mix(9.,5.,oem))*progressR);
   color=mix(color,blue,progress*.97);
   for(int i=0;i<31;i++){
     float a=0.22+float(i)*5.65/30.;
@@ -98,29 +99,21 @@ void main(){
   bars=max(bars,rect(p,vec2(88.,93.),vec2(8.,27.)));
   bars=max(bars,rect(p,vec2(109.,93.),vec2(8.,27.)));
   bars=max(bars,rect(p,vec2(130.,93.),vec2(8.,27.)));
-  color=mix(color,vec3(.1,.55,.96),bars);
+  color=mix(color,blue,bars*(1.-oem));
 
-  // Waze feed is a separate map slot beneath this layer. Making a hole is
-  // necessary but not sufficient: simultaneous map+panel is CAR-ONLY.
-  if(u_options.x>0.5){
-    float window=rect(p,vec2(960.,347.),vec2(334.,231.));
-    alpha*=1.-window;
-    float edge=rect(p,vec2(960.,347.),vec2(338.,235.))-window;
-    color=mix(color,blue,clamp(edge,0.,1.)*.32);
-    alpha=max(alpha,clamp(edge,0.,1.));
-  } else {
-    float stripe=rect(p,vec2(960.,430.),vec2(200.,1.6));
-    color=mix(color,blue,stripe*.8);
-    // P only: this scene cannot be armed in any other selector position.
-    vec2 gp=(p-vec2(930.,270.))/2.1;
-    float g=0.;
-    g=max(g,segment(gp,vec2(14.,3.),vec2(10.,2.4)));
-    g=max(g,segment(gp,vec2(26.,15.),vec2(2.4,9.6)));
-    g=max(g,segment(gp,vec2(2.,15.),vec2(2.4,9.6)));
-    g=max(g,segment(gp,vec2(14.,27.),vec2(10.,2.4)));
-    g=max(g,segment(gp,vec2(2.,39.),vec2(2.4,9.6)));
-    color=mix(color,white,g*.82);
-  }
+  // OEM-inspired alternative: finer coloured shoulders and discreet lower
+  // highlight. This is original shader artwork, not a BMW firmware recolor.
+  float shoulders=max(ring(p,left,262.,1.8),ring(p,right,262.,1.8));
+  color=mix(color,blue,shoulders*oem*.40);
+
+  // The central native-map view stays transparent in EVERY colour and layout,
+  // including Waze OFF. The BMW map can show below if the OEM slot is mapped.
+  // Concurrent panel+map remains CAR-ONLY (not verified on this G21).
+  float window=rect(p,vec2(960.,347.),vec2(334.,231.));
+  alpha*=1.-window;
+  float edge=rect(p,vec2(960.,347.),vec2(338.,235.))-window;
+  color=mix(color,blue,clamp(edge,0.,1.)*.32);
+  alpha=max(alpha,clamp(edge,0.,1.));
   if(u_options.z>0.5){
     float outer=1.-smoothstep(21.,24.,length(p-vec2(1840.,75.)));
     float inner=1.-smoothstep(7.,10.,length(p-vec2(1840.,75.)));
