@@ -128,11 +128,11 @@ mgu.run({
         const cycleTarget = () => ctx.settings.cycle('applyTarget');
         const prepareSlot11 = () => {
             plan = { kind: 'apply', result: A.slot11Plan(selected().rgb) };
-            actionNotice = 'SLOT 11: FDL PLAN ONLY. NOT CODED.';
+            actionNotice = 'PLAN: Slot11 05/00 -> 09/09; index09 RGB #' + rgbHex(selected().rgb) + '. NOT CODED.';
         };
         const prepareOriginal = () => {
             plan = { kind: 'restore', result: A.slot11RestorePlan() };
-            actionNotice = 'FACTORY PLAN: 05 00 / 78 3C FE. NOT CODED.';
+            actionNotice = 'RESTORE PLAN: Slot11 05/00; index09 black. NOT CODED.';
         };
         const applyChoice = async () => {
             if (ctx.settings.get('applyTarget') === 'slot11') {
@@ -315,7 +315,7 @@ mgu.run({
                 text(cv, 'Prepare factory restore', 793, 445, 20, t.text);
                 text(cv, actionNotice.slice(0, 72), 785, 466, 18, t.warn);
                 text(cv, target === 'slot11'
-                    ? 'Slot 11: prepare the FDL plan; no ECU coding is sent.'
+                    ? 'Slot 11 uses existing index09; other lighting functions may be affected. PLAN ONLY.'
                     : !ctl.verified ? 'Apply: check RAM -> arm -> confirm (parked only).'
                         : ctl.pending ? 'Ready to send: tap APPLY again within 8 seconds.'
                             : 'ECU ready: tap APPLY to arm, then confirm.',

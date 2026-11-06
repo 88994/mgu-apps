@@ -66,23 +66,53 @@ function rgbToGrid(rgb) {
     }
     return match;
 }
-/** A separate custom color needs a *verified* 360A library entry.
- * Do not mistake the profile index 05 for RGB bytes, or silently sacrifice
- * another slot by repurposing color index 00..05. */
+// Verified against the owner's *original* BDC CAFD_000051DD_017_074_007 NCD.
+// 360A index 09 is the LAST DEFINED color. It has three existing black LED
+// entries (start 23, count 3); NO index is added and NO count is changed.
+// 360D contains 11 two-byte profiles, after a three-byte header; slot 11
+// is currently 05 00, so only the last profile pair is redirected to 09 09.
+// CAUTION: index 09 may be used by functions outside the standard color menu.
+// This is a read-only coding PLAN, not permission or a working FDL writer.
+const SLOT11_TARGET_INDEX = 9;
+const SLOT11_PROFILE_ADDRESSES = Object.freeze([0x360D17, 0x360D18]);
+const INDEX9_ENTRY_ADDRESSES = Object.freeze([0x360A95, 0x360A9A, 0x360A9F]);
+const INDEX9_ORIGINAL_RGB = Object.freeze([0, 0, 0]);
+function index9Entries(rgb) {
+    const c = exactColor(rgb).rgb;
+    return INDEX9_ENTRY_ADDRESSES.map((address, i) => ({
+        address,
+        before: [i + 1, 0, 0, 0, i === 1 ? 0x00 : 0xFF],
+        after: [i + 1, ...c, i === 1 ? 0x00 : 0xFF],
+    }));
+}
 function slot11Plan(rgb) {
     const color = exactColor(rgb);
     return {
-        slot: 11, offset: SLOT11_PROFILE_OFFSET,
-        oldProfile: ORIGINAL_PROFILES.slice(SLOT11_PROFILE_OFFSET),
+        slot: 11,
+        colorIndex: SLOT11_TARGET_INDEX,
+        oldProfile: ORIGINAL_PROFILES.slice(SLOT11_PROFILE_OFFSET, SLOT11_PROFILE_OFFSET + 2),
+        newProfile: [SLOT11_TARGET_INDEX, SLOT11_TARGET_INDEX],
+        profileDataOffset: SLOT11_PROFILE_OFFSET,
+        profileAddresses: SLOT11_PROFILE_ADDRESSES.slice(),
         desiredRGB: color.rgb,
-        newProfile: null, // unknown until BDC's 360A free indices are verified
-        status: 'BDC 360A / unused color index not verified',
+        colorLibrary: { index: SLOT11_TARGET_INDEX, originalRGB: INDEX9_ORIGINAL_RGB.slice(),
+            startEntry: 23, entryCount: 3, entries: index9Entries(color.rgb),
+            changeCounts: false, addNewColor: false },
+        warning: 'Index 09 is already defined as black and may serve other lighting functions.',
+        status: 'OFFLINE FDL PLAN ONLY; no BDC coding or ECU write is performed',
     };
 }
 function slot11RestorePlan() {
-    return { slot: 11, offset: SLOT11_PROFILE_OFFSET, profile: [5,0],
+    return {
+        slot: 11, colorIndex: SLOT11_TARGET_INDEX,
+        profileDataOffset: SLOT11_PROFILE_OFFSET,
+        profileAddresses: SLOT11_PROFILE_ADDRESSES.slice(),
+        profile: [5, 0],
+        colorLibrary: { index: SLOT11_TARGET_INDEX, originalRGB: INDEX9_ORIGINAL_RGB.slice(),
+            entries: index9Entries(INDEX9_ORIGINAL_RGB) },
         factoryLilacRGB: ORIGINAL_LILAC_RGB.slice(),
-        status: 'Verify original NCD before restoration; no automatic ECU write' };
+        status: 'Restore 360D slot 11 = 05 00 and 360A index09 = black; compare with original NCD first',
+    };
 }
 /** Convert a picker tap into persisted hue/saturation selections. */
 function pickerCell(x, y, left, top, width, height) {
@@ -111,4 +141,6 @@ function fromPreset(preset, id, brightness, seconds) {
 }
 module.exports = { ECU, DID, PROBE_DID, COLORS, BRIGHTNESS, HUES, SATURATIONS, hsvToRgb,
     chooseColor, pickerCell, exactColor, rgbToGrid, slot11Plan, slot11RestorePlan,
-    ORIGINAL_PROFILES, ORIGINAL_LILAC_RGB, SLOT11_PROFILE_OFFSET, encode, fromPreset };
+    ORIGINAL_PROFILES, ORIGINAL_LILAC_RGB, SLOT11_PROFILE_OFFSET, SLOT11_TARGET_INDEX,
+    SLOT11_PROFILE_ADDRESSES, INDEX9_ENTRY_ADDRESSES, INDEX9_ORIGINAL_RGB, index9Entries,
+    encode, fromPreset };

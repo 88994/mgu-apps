@@ -28,7 +28,7 @@
       "id": "g21_ambient",
       "kind": "app",
       "title": "G21 Ambient",
-      "version": "0.3.10",
+      "version": "0.3.11",
       "path": "apps/g21_ambient",
       "icon": "icon.png",
       "mguHmi": [
@@ -100,14 +100,18 @@
       "version": "0.1.1",
       "path": "apps/mgu_gamesnacks",
       "icon": "icon.png",
-      "mguHmi": ["ID7"],
+      "mguHmi": [
+        "ID7"
+      ],
       "requires": {
         "idrive7-renderd": "2.1.6",
         "mgu-inputgate": "1.0.0"
       },
       "build": {
         "python": "tools/build_store_app.py",
-        "args": ["{id}"],
+        "args": [
+          "{id}"
+        ],
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
@@ -119,14 +123,18 @@
       "version": "0.1.0",
       "path": "apps/mgu_video_hub",
       "icon": "icon.png",
-      "mguHmi": ["ID7"],
+      "mguHmi": [
+        "ID7"
+      ],
       "requires": {
         "idrive7-renderd": "2.1.6",
         "mgu-inputgate": "1.0.0"
       },
       "build": {
         "python": "tools/build_store_app.py",
-        "args": ["{id}"],
+        "args": [
+          "{id}"
+        ],
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
