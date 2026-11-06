@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Custom Cluster 0.4.0 - G80 and OEM-inspired parked panels, colour studio, Waze.
+ * Custom Cluster 0.5.0 - G80, G21 and 6WB-inspired parked panels, colour studio.
  * Stock is the default. Real values only can reach cluster-render; emulator
  * and demo values stay exclusively on the centre-screen preview.
  */
@@ -11,7 +11,8 @@ const { ClusterLayers } = require('./cluster_layers.js');
 const { PhoneBridge } = require('./phone_bridge.js');
 const { WazeControl } = require('./waze_control.js');
 const { drawG80Preview } = require('./g80_preview.js');
-const { resolveColor, colorHex } = require('./cluster_colors.js');
+const { draw6WBPreview } = require('./sixwb_preview.js');
+const { resolveColor, resolve6WBColor, colorHex } = require('./cluster_colors.js');
 const { withAlpha } = require('./kit/canvas');
 
 function fmt(v, unit) { return G.isNum(v) ? String(Math.round(v)) + (unit || '') : '--'; }
@@ -28,6 +29,7 @@ mgu.run({
 
         function syncSettings() {
             cluster.settings({ layout: settings.get('layout'), accent: settings.get('accent'),
+                sixwbTheme: settings.get('sixwbTheme'), sixwbColorSource: settings.get('sixwbColorSource'),
                 colorMode: settings.get('colorMode'), rgbRed: settings.get('rgbRed'),
                 rgbGreen: settings.get('rgbGreen'), rgbBlue: settings.get('rgbBlue'),
                 colorBrightness: settings.get('colorBrightness'), cycleSeconds: settings.get('cycleSeconds'),
@@ -55,15 +57,21 @@ mgu.run({
             const t = ctx.theme(), d = car.data(), st = cluster.status();
             const cv = ctx.canvas(1600, 520).clear(t.bg);
             const layout = settings.get('layout');
-            const accentHex = colorHex(resolveColor({ accent: settings.get('accent'),
+            const activeOptions = { accent: settings.get('accent'),
                 colorMode: settings.get('colorMode'), rgbRed: settings.get('rgbRed'),
                 rgbGreen: settings.get('rgbGreen'), rgbBlue: settings.get('rgbBlue'),
-                colorBrightness: settings.get('colorBrightness'), cycleSeconds: settings.get('cycleSeconds') }, Date.now()));
+                colorBrightness: settings.get('colorBrightness'), cycleSeconds: settings.get('cycleSeconds'),
+                sixwbTheme: settings.get('sixwbTheme'), sixwbColorSource: settings.get('sixwbColorSource') };
+            const accentHex = colorHex(layout === 'sixwb' ? resolve6WBColor(activeOptions, Date.now())
+                : resolveColor(activeOptions, Date.now()));
             G.frame(cv, t, ['Custom Cluster'], 0,
                 [d.demo ? { text: 'PREVIEW' } : { text: st.ready ? 'RENDERER READY' : 'RENDERER OFFLINE' }]);
 
             G.panel(cv, t, 24, 48, 1070, 450, 'Cluster design: ' + layout.toUpperCase());
-            if (layout === 'g80' || layout === 'oem') {
+            if (layout === 'sixwb') {
+                draw6WBPreview(cv, { x: 38, y: 86, w: 1042, h: 398 }, d,
+                    { wazeMap: settings.get('wazeMap'), color: accentHex, mode: settings.get('sixwbTheme') }, st);
+            } else if (layout === 'g80' || layout === 'oem') {
                 drawG80Preview(cv, { x: 38, y: 86, w: 1042, h: 398 }, d,
                     { wazeMap: settings.get('wazeMap'), color: accentHex, variant: layout }, st);
             } else if (layout === 'classic') {
@@ -100,7 +108,7 @@ mgu.run({
                 cv.text(bridge.url('off'), 1135, 444, 12, t.text);
             } else cv.text('Shortcuts URLs in Settings', 1150, 423, 18, t.dim);
 
-            if (layout === 'g80' || layout === 'oem') {
+            if (layout === 'g80' || layout === 'oem' || layout === 'sixwb') {
                 cv.text('Parked test only · Never assume this replaces OEM warnings',
                     1136, 474, 17, t.warn);
             } else if (!st.live && layout !== 'stock') {

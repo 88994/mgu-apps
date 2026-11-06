@@ -4,7 +4,8 @@
 const { ClusterRender } = require('./cluster_render_client.js');
 const fragmentShader = require('./cluster_shader.js');
 const g80Shader = require('./g80_panel_shader.js');
-const { PALETTE, resolveColor, colorHex } = require('./cluster_colors.js');
+const sixwbShader = require('./sixwb_panel_shader.js');
+const { PALETTE, resolveColor, resolve6WBColor, colorHex } = require('./cluster_colors.js');
 const COLORS = Object.keys(PALETTE).reduce((m, k) => { m[k] = PALETTE[k].concat([1]); return m; }, {});
 const BADGE_FS = `#version 100
 precision mediump float;
@@ -17,7 +18,7 @@ void main() {
   vec3 c=mix(vec3(0.03,0.26,0.17),vec3(0.36,1.0,0.60),inside);
   gl_FragColor=vec4(c,outside);
 }`;
-const MODES = { stock: 0, sport: 1, classic: 2, minimal: 3, g80: 4, oem: 5 };
+const MODES = { stock: 0, sport: 1, classic: 2, minimal: 3, g80: 4, oem: 5, sixwb: 6 };
 const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 const PANEL_TEST_MS = 12000;
 
@@ -34,6 +35,7 @@ class ClusterLayers {
         this.lastSample = 0;
         this.data = {};
         this.options = { layout: 'stock', accent: 'm', phoneBadge: false, wazeMap: 'auto',
+            sixwbTheme: 'comfort', sixwbColorSource: 'original',
             colorMode: 'palette', colorBrightness: 100 };
         this.phoneOpen = false;
         this.lastSent = 0;
@@ -81,7 +83,7 @@ class ClusterLayers {
     parked() { return this.live() && this.data.stage === 'P' && this.data.speed >= 0 && this.data.speed < 0.5; }
     armPanel() {
         if (this.armedUntil) { this.disarm('Stopped by user'); this.apply(); return false; }
-        if (this.options.layout !== 'g80' && this.options.layout !== 'oem') {
+        if (this.options.layout !== 'g80' && this.options.layout !== 'oem' && this.options.layout !== 'sixwb') {
             this.disarmReason = 'Choose a full-panel design first'; return false;
         }
         if (!this.parked()) { this.disarmReason = 'Real speed and gear P required'; return false; }
@@ -102,11 +104,11 @@ class ClusterLayers {
         if (this.armedUntil && (!this.parked() || Date.now() >= this.armedUntil)) {
             this.disarm(this.parked() ? 'Test timeout — original cluster restored' : 'Left P, moving, or stale data');
         }
-        const panelActive = (mode === 4 || mode === 5) && this.armedUntil > Date.now() && this.parked();
+        const panelActive = (mode === 4 || mode === 5 || mode === 6) && this.armedUntil > Date.now() && this.parked();
         if (panelActive && !this.panelRef) {
             this.panelRef = this.cr.effect({ target: 'panel', klass: 'overlay',
                 contend: true, guide_hold: false, x: 0, y: 0, w: 1920, h: 720,
-                fs: g80Shader });
+                fs: mode === 6 ? sixwbShader : g80Shader });
             this.lastSent = 0;
         }
         if (!panelActive && this.panelRef) this.disarm('Original cluster restored');
@@ -123,9 +125,12 @@ class ClusterLayers {
             const d = this.data;
             this.cr.uniform(this.panelRef, 'u_values', [d.speed, d.rpm, finite(d.oil) ? d.oil : -1,
                 finite(d.coolant) ? d.coolant : -1]);
+            const sixwbMode = { comfort: 0, sport: 1, eco: 2 }[this.options.sixwbTheme] || 0;
             this.cr.uniform(this.panelRef, 'u_options', [1,
-                finite(d.gear) ? d.gear : 0, this.options.phoneBadge && this.phoneOpen ? 1 : 0, mode === 5 ? 1 : 0]);
-            this.cr.uniform(this.panelRef, 'u_accent', resolveColor(this.options, Date.now()));
+                finite(d.gear) ? d.gear : 0, this.options.phoneBadge && this.phoneOpen ? 1 : 0,
+                mode === 6 ? sixwbMode : mode === 5 ? 1 : 0]);
+            this.cr.uniform(this.panelRef, 'u_accent', mode === 6 ? resolve6WBColor(this.options, Date.now())
+                : resolveColor(this.options, Date.now()));
             this.lastSent = Date.now();
         }
         if (show && this.effectRef && Date.now() - this.lastSent >= 150) {
@@ -150,7 +155,8 @@ class ClusterLayers {
             live: this.live(), layout: this.options.layout, parked: this.parked(),
             panelActive: !!this.panelRef, disarmReason: this.disarmReason,
             secondsLeft: this.panelRef ? Math.max(0, Math.ceil((this.armedUntil - Date.now()) / 1000)) : 0,
-            color: colorHex(resolveColor(this.options, Date.now())) };
+            color: colorHex(this.options.layout === 'sixwb' ? resolve6WBColor(this.options, Date.now())
+                : resolveColor(this.options, Date.now())) };
     }
     close() { this.disarm('App closed'); this.cr.close(); }
 }

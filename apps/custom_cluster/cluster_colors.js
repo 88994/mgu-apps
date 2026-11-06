@@ -32,7 +32,16 @@ function resolveColor(options, now) {
     const strength = clamp(numeric(o.colorBrightness, 100), 25, 100) / 100;
     return rgb.map((v) => clamp(v * strength, 0, 1)).concat([1]);
 }
+/** Period-inspired 6WB Comfort/Sport/ECO colours; optional global RGB override. */
+function resolve6WBColor(options, now) {
+    const o = options || {};
+    if (o.sixwbColorSource === 'studio') return resolveColor(o, now);
+    const rgb = { comfort: [0.91, 0.93, 0.95], sport: [1.00, 0.20, 0.23], eco: [0.24, 0.68, 1.00] }
+        [o.sixwbTheme] || [0.91, 0.93, 0.95];
+    const strength = clamp(numeric(o.colorBrightness, 100), 25, 100) / 100;
+    return rgb.map((v) => clamp(v * strength, 0, 1)).concat([1]);
+}
 function colorHex(rgba) {
     return '#' + rgba.slice(0, 3).map((v) => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, '0')).join('');
 }
-module.exports = { PALETTE, hsv, resolveColor, colorHex };
+module.exports = { PALETTE, hsv, resolveColor, resolve6WBColor, colorHex };
