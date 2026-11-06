@@ -1,8 +1,8 @@
 {
   "id": "g21_ambient",
   "title": "G21 Ambient Lighting",
-  "description": "RGB picker, temporary LIN test and offline BDC FDL slot-11 plan reusing existing index09 (no automatic coding)",
-  "version": "0.3.11",
+  "description": "RGB picker, temporary LIN test and offline BDC menu-position-11 RGB request (isolated palette mapping unverified; no coding)",
+  "version": "0.3.12",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB1",
   "iconGlyph": "RGB",

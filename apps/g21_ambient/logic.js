@@ -66,52 +66,46 @@ function rgbToGrid(rgb) {
     }
     return match;
 }
-// Verified against the owner's *original* BDC CAFD_000051DD_017_074_007 NCD.
-// 360A index 09 is the LAST DEFINED color. It has three existing black LED
-// entries (start 23, count 3); NO index is added and NO count is changed.
-// 360D contains 11 two-byte profiles, after a three-byte header; slot 11
-// is currently 05 00, so only the last profile pair is redirected to 09 09.
-// CAUTION: index 09 may be used by functions outside the standard color menu.
-// This is a read-only coding PLAN, not permission or a working FDL writer.
-const SLOT11_TARGET_INDEX = 9;
+// In the owner's BDC CAFD_000051DD_017_074_007 NCD, 360D defines
+// ELEVEN iDrive COLOR MENU POSITIONS. The user wants the last existing
+// MENU POSITION (number 11, Lilac), not BDC palette index 09.
+// 360D slot 11 currently reads 05 00 at 0x360D17..0x360D18.
+// Internal 360A palette indices 00..09 are separate from menu positions.
+// Palette 05 is shared with menu position 10; palette 09 has existing
+// black entries that might be required for other vehicle lighting functions.
+// No independently addressable RGB palette mapping is confirmed. This
+// prevents a safe FDL modification until the mapping has been verified.
 const SLOT11_PROFILE_ADDRESSES = Object.freeze([0x360D17, 0x360D18]);
-const INDEX9_ENTRY_ADDRESSES = Object.freeze([0x360A95, 0x360A9A, 0x360A9F]);
-const INDEX9_ORIGINAL_RGB = Object.freeze([0, 0, 0]);
-function index9Entries(rgb) {
-    const c = exactColor(rgb).rgb;
-    return INDEX9_ENTRY_ADDRESSES.map((address, i) => ({
-        address,
-        before: [i + 1, 0, 0, 0, i === 1 ? 0x00 : 0xFF],
-        after: [i + 1, ...c, i === 1 ? 0x00 : 0xFF],
-    }));
-}
 function slot11Plan(rgb) {
     const color = exactColor(rgb);
     return {
         slot: 11,
-        colorIndex: SLOT11_TARGET_INDEX,
+        menuPosition: 11,
+        existingMenuPosition: true,
+        addsMenuPosition: false,
         oldProfile: ORIGINAL_PROFILES.slice(SLOT11_PROFILE_OFFSET, SLOT11_PROFILE_OFFSET + 2),
-        newProfile: [SLOT11_TARGET_INDEX, SLOT11_TARGET_INDEX],
+        newProfile: null,
         profileDataOffset: SLOT11_PROFILE_OFFSET,
         profileAddresses: SLOT11_PROFILE_ADDRESSES.slice(),
         desiredRGB: color.rgb,
-        colorLibrary: { index: SLOT11_TARGET_INDEX, originalRGB: INDEX9_ORIGINAL_RGB.slice(),
-            startEntry: 23, entryCount: 3, entries: index9Entries(color.rgb),
-            changeCounts: false, addNewColor: false },
-        warning: 'Index 09 is already defined as black and may serve other lighting functions.',
-        status: 'OFFLINE FDL PLAN ONLY; no BDC coding or ECU write is performed',
+        paletteIndex: null,
+        paletteEntries: [],
+        codingReady: false,
+        warning: 'Menu position 11 uses profile 05 00; palette 05 is shared and palette 09 may serve other functions. Isolated RGB mapping unverified.',
+        status: 'OFFLINE MENU POSITION 11 REQUEST ONLY; no FDL patch or ECU write is performed',
     };
 }
 function slot11RestorePlan() {
     return {
-        slot: 11, colorIndex: SLOT11_TARGET_INDEX,
+        slot: 11,
+        menuPosition: 11,
+        existingMenuPosition: true,
         profileDataOffset: SLOT11_PROFILE_OFFSET,
         profileAddresses: SLOT11_PROFILE_ADDRESSES.slice(),
         profile: [5, 0],
-        colorLibrary: { index: SLOT11_TARGET_INDEX, originalRGB: INDEX9_ORIGINAL_RGB.slice(),
-            entries: index9Entries(INDEX9_ORIGINAL_RGB) },
+        paletteEntries: [],
         factoryLilacRGB: ORIGINAL_LILAC_RGB.slice(),
-        status: 'Restore 360D slot 11 = 05 00 and 360A index09 = black; compare with original NCD first',
+        status: 'Factory menu position 11 = 05 00; verify against original NCD before any coding; no ECU write',
     };
 }
 /** Convert a picker tap into persisted hue/saturation selections. */
@@ -141,6 +135,5 @@ function fromPreset(preset, id, brightness, seconds) {
 }
 module.exports = { ECU, DID, PROBE_DID, COLORS, BRIGHTNESS, HUES, SATURATIONS, hsvToRgb,
     chooseColor, pickerCell, exactColor, rgbToGrid, slot11Plan, slot11RestorePlan,
-    ORIGINAL_PROFILES, ORIGINAL_LILAC_RGB, SLOT11_PROFILE_OFFSET, SLOT11_TARGET_INDEX,
-    SLOT11_PROFILE_ADDRESSES, INDEX9_ENTRY_ADDRESSES, INDEX9_ORIGINAL_RGB, index9Entries,
+    ORIGINAL_PROFILES, ORIGINAL_LILAC_RGB, SLOT11_PROFILE_OFFSET, SLOT11_PROFILE_ADDRESSES,
     encode, fromPreset };
