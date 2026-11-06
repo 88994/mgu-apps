@@ -6,7 +6,7 @@ StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-ExecStart=/var/opt/mgu_phone_bridge/current/mgu-phone-bridge
+ExecStart=/var/opt/mgu-phone-bridge/current/mgu-phone-bridge
 User=root
 Restart=always
 RestartSec=3

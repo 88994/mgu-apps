@@ -11,7 +11,7 @@ Eight source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/m
 | `mgu_gamesnacks` | 0.1.1 (preview) | Offline HTML5 game catalog and touch diagnostic preview; original game distribution and browser compatibility still under review. |
 | `mgu_video_hub` | 0.1.0 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
 | `custom_cluster` | 0.2.0 (experimental) | G80-inspired full cluster (parked test), optional Waze map and original BMW display; real car rendering unverified. |
-| `mgu_phone_terminal` | 0.1.0 (experimental) | On-car QR pairing for a temporary phone-browser root command console. Requires the `mgu_phone_bridge` system tool; local network reachability and real MGU behavior not yet verified. |
+| `mgu_phone_terminal` | 0.1.1 (experimental) | On-car QR pairing for a temporary phone-browser root command console. Requires the `mgu-phone-bridge` system tool; local network reachability and real MGU behavior not yet verified. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 
