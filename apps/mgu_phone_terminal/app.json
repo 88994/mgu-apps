@@ -1,0 +1,21 @@
+{
+  "id": "mgu_phone_terminal",
+  "title": "Phone Terminal",
+  "description": "Secure QR pairing for a temporary mobile terminal on the MGU",
+  "version": "0.1.0",
+  "vendor": "Jürgen",
+  "loggingId": "OTRM",
+  "iconGlyph": ">_",
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "Phone Terminal",
+      "buttons": [
+        ["BTN_START", "New session"],
+        ["BTN_STOP", "Revoke access"],
+        ["BTN_ADDRESS", "Next address"]
+      ]
+    }
+  ]
+}

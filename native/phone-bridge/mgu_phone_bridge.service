@@ -1,0 +1,16 @@
+[Unit]
+Description=MGU Phone Terminal Bridge
+After=oapcontroller.service
+RequiresMountsFor=/var/opt
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/var/opt/mgu_phone_bridge/current/mgu-phone-bridge
+User=root
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

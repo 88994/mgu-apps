@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#090f1b">
+  <title>MGU Phone Terminal</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/client.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="heading">
+      <div class="brand"><span class="brand-icon">&gt;_</span><div><h1>Phone Terminal</h1><p>MGU / iDrive 7</p></div></div>
+      <span class="pill" id="state">Not connected</span>
+    </header>
+    <section class="notice"><strong>Root terminal.</strong> Commands execute directly on the car's head unit. Work only while parked. Incorrect commands can disable the MGU. Sessions end after 15 minutes.</section>
+    <section class="panel" id="pair-panel">
+      <h2>Connect your phone</h2>
+      <p id="pair-message">Start a new session in the Phone Terminal app on the car, then scan its QR code.</p>
+    </section>
+    <section class="panel hidden" id="terminal-panel">
+      <div class="terminal-top"><div><h2>Terminal</h2><p>Non-interactive commands · max. 15 s each</p></div><button id="disconnect" class="secondary">Disconnect</button></div>
+      <div class="shortcuts" aria-label="Read-only commands">
+        <button type="button" data-cmd="id">id</button>
+        <button type="button" data-cmd="uname -a">uname -a</button>
+        <button type="button" data-cmd="df -h">df -h</button>
+        <button type="button" data-cmd="ip -4 addr">IP addresses</button>
+      </div>
+      <label for="command">Shell command</label>
+      <textarea id="command" rows="3" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="e.g. ls -la /var/opt/public/oap"></textarea>
+      <div class="actions"><span id="hint">Commands execute as root.</span><button id="run">Run command</button></div>
+      <label for="output">Output</label>
+      <pre id="output" role="log" aria-live="polite">Ready.</pre>
+      <div class="footer"><span id="expiry"></span><button id="clear" class="text-button">Clear output</button></div>
+    </section>
+    <footer>Local network only. No cloud account or SSH private key needed on the phone.</footer>
+  </main>
+</body>
+</html>

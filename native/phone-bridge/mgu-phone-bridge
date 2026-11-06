@@ -1,0 +1,3 @@
+#!/usr/bin/env node
+'use strict';
+require('./server').start().catch((err) => { console.error('[phone-bridge] fatal:', err.stack || err); process.exit(1); });

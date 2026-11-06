@@ -1,0 +1,19 @@
+{
+  "id": "mgu_phone_bridge",
+  "kind": "tool",
+  "version": "0.1.0",
+  "title": "Phone Terminal Bridge",
+  "description": "Authenticated mobile root terminal for the MGU",
+  "mguHmi": ["ID7"],
+  "files": [
+    {"path": "mgu-phone-bridge", "mode": "0755"},
+    {"path": "server.js", "mode": "0644"},
+    {"path": "public/index.html", "mode": "0644"},
+    {"path": "public/client.js", "mode": "0644"},
+    {"path": "public/style.css", "mode": "0644"}
+  ],
+  "units": [{"name": "mgu_phone_bridge.service", "from": "mgu_phone_bridge.service"}],
+  "enable": [{"unit": "mgu_phone_bridge.service", "target": "multi-user.target"}],
+  "recmgr": ["mgu_phone_bridge"],
+  "restart": ["mgu_phone_bridge.service"]
+}

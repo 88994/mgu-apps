@@ -1,0 +1,33 @@
+:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #080e19; color: #e8efff; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 85% -15%, #1b3253, transparent 48%), #080e19; }
+main { max-width: 780px; margin: 0 auto; padding: max(25px, env(safe-area-inset-top)) 17px max(30px, env(safe-area-inset-bottom)); }
+.heading, .brand, .terminal-top, .actions, .footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.brand { justify-content: flex-start; }
+.brand-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(145deg, #1769bb, #313974); color: white; font: bold 26px/1 monospace; }
+h1, h2, p { margin: 0; }
+h1 { font-size: 22px; letter-spacing: -0.45px; }
+h2 { font-size: 19px; letter-spacing: -0.3px; }
+p { color: #8fa7bf; line-height: 1.45; }
+.brand p { font-size: 13px; margin-top: 2px; }
+.pill { flex-shrink: 0; font-size: 11px; border-radius: 99px; color: #ffca71; background: #46371f; padding: 8px 10px; }
+.pill.ok { color: #86f5c7; background: #154638; }
+.notice { margin: 24px 0 16px; border-radius: 14px; padding: 15px 16px; background: #30281d; border: 1px solid #735427; color: #ffe1a0; line-height: 1.45; font-size: 14px; }
+.panel { border: 1px solid #27364d; background: #111b2b; border-radius: 20px; padding: 18px; margin-top: 16px; box-shadow: 0 20px 60px #0003; }
+.panel > p, .terminal-top p { margin-top: 7px; font-size: 13px; }
+.hidden { display: none; }
+.shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin: 19px 0; }
+button { border: 0; border-radius: 10px; background: #3387e2; color: white; padding: 11px 16px; font: 600 14px/1.2 inherit; cursor: pointer; touch-action: manipulation; }
+button:disabled { opacity: .5; cursor: wait; }
+button.secondary, .shortcuts button { background: #202e45; color: #c7daf4; border: 1px solid #3a506c; }
+.shortcuts button { font-family: monospace; font-size: 13px; padding: 9px 12px; }
+label { display: block; margin: 15px 0 8px; color: #b4c9e4; font-size: 13px; font-weight: 600; }
+textarea { display: block; background: #09111e; color: #e2f2ff; border: 1px solid #385170; border-radius: 12px; width: 100%; padding: 13px; resize: vertical; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+textarea:focus { outline: 2px solid #3d91ff; outline-offset: 0; }
+.actions { margin: 13px 0 17px; }
+.actions span { color: #90a5bd; font-size: 12px; }
+#output { margin: 0; padding: 16px; border-radius: 12px; border: 1px solid #253c57; background: #050b14; color: #c2ebd7; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 48vh; min-height: 190px; overflow: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.footer { margin-top: 12px; font-size: 12px; color: #90a5bd; }
+.text-button { padding: 8px; background: none; color: #91caff; font-size: 12px; }
+footer { margin-top: 28px; font-size: 12px; text-align: center; color: #7b8fa6; line-height: 1.4; }
+@media (max-width: 440px) { h1 { font-size: 18px; } .pill { font-size: 10px; } .terminal-top { align-items: flex-start; } button { padding: 11px; } }
