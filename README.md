@@ -1,6 +1,6 @@
 # MGU Apps — BMW iDrive 7
 
-Eight source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
+Nine source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
 
 | App | Version | Function |
 | --- | --- | --- |
@@ -10,6 +10,7 @@ Eight source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/m
 | `mgu_gamestation` | 0.2.0 (experimental) | NES, SNES, Game Boy/Color, Pong; iDrive singleplayer, phone singleplayer, two-phone multiplayer or hybrid; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
 | `mgu_gamesnacks` | 0.1.1 (preview) | Offline HTML5 game catalog and touch diagnostic preview; original game distribution and browser compatibility still under review. |
 | `mgu_video_hub` | 0.1.0 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
+| `gif_home` | 0.2.0 (experimental) | Animated home-screen widget with built-in BMW-style roundel; local GIF upload from iPhone using a temporary QR code. Large-tile support and phone connectivity require on-car verification. |
 | `custom_cluster` | 0.2.0 (experimental) | G80-inspired full cluster (parked test), optional Waze map and original BMW display; real car rendering unverified. |
 | `mgu_phone_terminal` | 0.1.2 (experimental) | On-car QR pairing for a temporary phone-browser root command console. Requires the `mgu-phone-bridge` system tool (0.1.1); app-owned key provisioning and service diagnostics added; real MGU command/network operation not yet verified. |
 
@@ -37,6 +38,11 @@ SELECT. In Pong the knob instead moves the paddle and the other player can be
 an offline CPU opponent. A complex SNES game's simultaneous button combinations
 may still require a smartphone controller. The iDrive input path needs the
 renderer and inputgate on the real MGU and is not verified on-car yet.
+
+
+## GIF Home (experimental)
+
+`gif_home` registers an animated **large home-screen widget** that can be selected instead of the map tile without modifying BMW navigation or map data. A bundled 24-frame BMW-style animation runs offline. **Phone upload** opens a short-lived, token-protected local web page on port 18883; scan the QR code on your phone and import your own GIF. Phone-to-MGU local-network access and this widget's image refresh behavior still need verification on the car. [Instructions and limitations](apps/gif_home/README.md).
 
 ## Video Hub (experimental)
 

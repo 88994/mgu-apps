@@ -140,6 +140,28 @@
       }
     },
     {
+      "id": "gif_home",
+      "kind": "app",
+      "title": "GIF Home",
+      "version": "0.2.0",
+      "path": "apps/gif_home",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "idrive7-renderd": "2.1.6",
+        "mgu-inputgate": "1.0.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
+    },
+    {
       "id": "custom_cluster",
       "kind": "app",
       "title": "Custom Cluster",

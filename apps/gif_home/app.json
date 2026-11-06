@@ -1,0 +1,88 @@
+{
+  "id": "gif_home",
+  "title": "GIF Home",
+  "description": "Offline animated GIF home-screen widget with QR-code phone upload for iDrive 7",
+  "version": "0.2.0",
+  "vendor": "custom",
+  "loggingId": "GFI1",
+  "iconGlyph": "GIF",
+  "signals": {},
+  "startWidget": {
+    "name": "GIF Home",
+    "layout": "LT_Table_OnlineApps_DriveRecorderWidget",
+    "image": "BackgroundImage1",
+    "size": [384, 256],
+    "safe": [0.07, 0.07],
+    "cells": {
+      "Title": ["", "Text"],
+      "ErrorInfo": [false, "Bool"],
+      "background": [true, "Bool"],
+      "ProgressbarVisible": [false, "Bool"],
+      "TextRecordings": ["", "Text"],
+      "TextCam": ["", "Text"],
+      "TimeElapsed": ["", "Text"],
+      "TimeRemaining": ["", "Text"]
+    }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "GIF Home",
+      "buttons": [
+        ["BTN_SOURCE", "Switch GIF"],
+        ["BTN_PHONE", "Phone upload"],
+        ["BTN_NEXT", "Next IP"],
+        ["BTN_SETTINGS", "Settings"]
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "key": "source",
+      "label": "Animation",
+      "type": "choice",
+      "default": "auto",
+      "options": [
+        ["auto", "Custom if available"],
+        ["demo", "Built-in demo"],
+        ["custom", "Custom GIF only"]
+      ]
+    },
+    {
+      "key": "fit",
+      "label": "Picture fit",
+      "type": "choice",
+      "default": "contain",
+      "options": [
+        ["cover", "Fill / crop edges"],
+        ["contain", "Full picture / bars"]
+      ]
+    },
+    {
+      "key": "speed",
+      "label": "Animation speed",
+      "type": "choice",
+      "default": "normal",
+      "options": [
+        ["slow", "Half speed"],
+        ["normal", "Normal"],
+        ["fast", "1.5x speed"]
+      ]
+    },
+    {
+      "key": "widgetFps",
+      "label": "Widget refresh rate",
+      "type": "number",
+      "unit": "fps",
+      "default": 4,
+      "steps": [1, 2, 3, 4, 5, 6]
+    },
+    {
+      "key": "pause",
+      "label": "Pause animation",
+      "type": "bool",
+      "default": false
+    }
+  ]
+}
