@@ -1,6 +1,42 @@
-# Custom Cluster 0.5.0 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.1 — BMW G21 / MGU iDrive 7
 
 **Experimental. Not validated on a real car. No authorization for driving with a replaced speedometer.**
+
+## 0.5.1: Small shader probe and offline diagnostics
+
+Following the architecture documented by
+[eroobeeroo/idrive7-cluster-info](https://github.com/eroobeeroo/idrive7-cluster-info/tree/main/apps/cluster_layouts),
+the test now **defaults to a tiny GLSL ES 1.00 marker**, rather than the
+previous 1920x720 single-shader dashboard. The white/accent test rectangle
+is requested at x=86, y=300, w=260, h=110, left of the native map
+(x=416..1504, y=120..600). It does not validate a full instrument display.
+
+**Settings → Parked test content**:
+* **Small diagnostic marker** (default): isolate renderer/slot failures from a complex shader failure.
+* **Selected full cluster design**: the previous G80/G21/6WB single-shader implementation, explicitly opt-in and still unverified. Those large shaders have **not yet** been split into smaller layers.
+
+**Settings → Panel target / slot** defaults to `panel` (DCSM slot `0x203`).
+Experimental `panel201` and `panel202` are selectable only if the current
+renderer advertises them. A firmware/renderer replacement is not required
+for the default test and should not be performed without compatibility checks.
+
+The app now distinguishes `Panel: REQUESTED` from the renderer's own
+`Layer` and `Slot` events, including refusals. A created layer reference,
+or even a `shown` status, **does not prove a visible image on the cluster**.
+Press **Diagnostics** for the renderer backend, advertised targets, current
+panel status, refusal reason and slot status excerpts.
+
+Press **QR logs** to capture full renderer status and current app diagnostics.
+Photograph each numbered QR code; press the button again for the next page
+(after the last page, it closes). No phone-MGU network or internet is needed.
+Codes contain compressed text under a `CCLOG1` identifier. Put the scanned
+QR text into `scanned-pages.txt` and run
+`python3 tools/decode_custom_cluster_logs.py scanned-pages.txt`.
+Full text also saves to the app's `exports/` folder and writable USB mounts.
+
+Still to verify on this car: small-layer GPU rendering, target/scene ownership,
+stock warning and gear displays, BMW/Waze map coexistence, and restoration
+under each failure condition.
 
 G80-inspired, G21 OEM-style and classic **BMW 6WB-inspired** reconstructed instrument **panels** (1920 × 720), three optional centre-map overlays, unchanged stock mode, a shared colour studio and switchable Waze map. Developed for a 2021 BMW G21 318d with iDrive 7 MGU and KOMBSP18; the appearances are original interpretations, not copies of BMW's instrument resources. The 318d engine scale remains 0–5000 rpm (not the M3's redline).
 
@@ -14,7 +50,7 @@ G80-inspired, G21 OEM-style and classic **BMW 6WB-inspired** reconstructed instr
 | **G80 full cluster** | Entire `panel` slot, **only when manually armed at standstill with the selector at P**, max. 12 seconds | Centre map window **always transparent**, both with Waze and with BMW's own map selected; panel+map combination needs a real-car test |
 | M Sport / Classic / Minimal | Coloured overlay in `map` slot, beneath original BMW dials | Native 504×368 map guidance-safe region is transparent; does **not** take over the BMW stock map slot |
 
-None of the full-panel modes immediately replaces the OEM cluster upon selection. They always open with the original BMW display. The iDrive main screen shows a design preview; it is not cluster output. To test the real `panel`, select 6WB, G80 or OEM-style, have genuine SOME/IP speed and engine rpm data, be in **P** with speed under 0.5 km/h, and press **Parked panel test**. Press the button again to stop. The layer is also dropped on departure from P, speed movement, missing data, layout change, app exit or after 12 seconds. Demo values cannot activate a panel. No persistent armed flag, no autostart of the full panel.
+None of the full-panel modes immediately replaces the OEM cluster upon selection. They always open with the original BMW display. The iDrive main screen shows a design preview; it is not cluster output. To test the real `panel`, select 6WB, G80 or OEM-style, have genuine SOME/IP speed and engine rpm data, be in **P** with speed under 0.5 km/h, and press **Parked panel test**. In 0.5.1 this initially shows only a small marker unless you explicitly select the full-design test. Press the button again to stop. The layer is also dropped on departure from P, speed movement, missing data, layout change, app exit or after 12 seconds. Demo values cannot activate a panel. No persistent armed flag, no autostart of the full panel.
 
 ## 6WB variations (new in 0.5.0)
 
@@ -64,7 +100,7 @@ Optional Shortcuts bridge from v0.1.0 remains. It accepts authenticated, locally
 1. Ensure your existing `cluster-render` native service is installed from the Waze on Cluster ecosystem, and check the target configuration and status before any parked test.
 2. Add `apps/custom_cluster` to the `idrive7-apps` kit repository; the compatible SDK from your MGU is required to build.
 3. Build: `python3 kit/tools/build.py custom_cluster`.
-4. Install `dist/custom_cluster@0.5.0.mgu` by your trusted MGU installer, or update the source app through [NamelsMissing/mgu-apps](https://github.com/NamelsMissing/mgu-apps) in MGU Store **after that source has been updated**.
+4. Install `dist/custom_cluster@0.5.1.mgu` by your trusted MGU installer, or update the source app through [NamelsMissing/mgu-apps](https://github.com/NamelsMissing/mgu-apps) in MGU Store **after that source has been updated**.
 5. Start in **BMW stock**. Only use the full-panel **iDrive previews** until you can safely validate the renderer with the stationary car and reliable diagnostics.
 
 No `cluster-render` dependency is automatically installed by the app. Your Store manifest should explicitly keep the dependency; otherwise installation of the standalone MGU package alone will only show the iDrive preview.
@@ -76,6 +112,8 @@ No `cluster-render` dependency is automatically installed by the app. Your Store
 * `cluster_shader.js`: M Sport, Classic and Minimal decorative layers with the 504×368 map-safe area always transparent.
 * `cluster_colors.js`: preset palette, RGB and colour animation shared by all custom layouts, controlled solely through MGU settings.
 * `cluster_layers.js`: one renderer client; own refs for `map`, `panel`, phone badge; strictly guarded panel test; no demo data on KOMBI.
+* `panel_probe_shader.js`: compact GLSL test, outside the map aperture.
+* `cluster_diagnostics.js`, `qr_vendor.js`: read-only renderer, QR and USB logs.
 * `waze_control.js`: optional one-shot requests to original Waze sockets; no root commands, patch install/revert, or HUD edits.
 * `g80_preview.js`: iDrive-only canvas design, synthetic graphic centre map as a **mockup** (not a live Waze map).
 * `sixwb_preview.js`: iDrive-only classic 6WB dial preview, with Comfort/Sport/ECO PRO colours and the same map mockup caveat.
