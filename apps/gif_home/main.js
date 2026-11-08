@@ -25,6 +25,7 @@ mgu.run({
         const ui = ctx.ui, settings = ctx.settings, log = ctx.log;
         const customFile = path.join(ctx.dataDir, 'custom.gif');
         const state = { custom: null, demo: null, active: null, name: '', problem: '',
+            demoError: '', help: false,
             start: Date.now(), pauseAt: null, screenIndex: -1, screenDirty: true,
             widgetIndex: Object.create(null), phone: {
                 enabled: false, addresses: [], addressIndex: 0, status: '', link: '', layer: null
@@ -36,10 +37,18 @@ mgu.run({
         }
         function loadDemo() {
             try {
-                const base64 = open(path.join(__dirname, 'resources')).json('demo.json').base64;
+                const data = open(path.join(__dirname, 'resources')).json('demo.json');
+                const base64 = data && data.base64;
                 if (!base64) throw new Error('Demo GIF resource missing');
                 state.demo = decode(Buffer.from(base64, 'base64'));
-            } catch (e) { state.demo = null; log.warn('Demo GIF: ' + e.message); }
+                state.demoError = '';
+                log.info('Built-in GIF loaded: ' + state.demo.width + 'x' + state.demo.height +
+                    ', ' + state.demo.frames.length + ' frames');
+            } catch (e) {
+                state.demo = null;
+                state.demoError = e.message || String(e);
+                log.warn('Built-in GIF failed: ' + state.demoError);
+            }
         }
         function loadCustom() {
             try {
@@ -55,11 +64,14 @@ mgu.run({
                 return e.message;
             }
         }
-        function selectActive(customError) {
-            const source = settings.get('source');
-            state.active = source === 'demo' ? state.demo : (state.custom || (source === 'auto' ? state.demo : null));
-            state.name = state.active === state.custom ? 'custom.gif' : state.active === state.demo ? 'Built-in demo' : 'No GIF';
-            state.problem = (source === 'custom' || (source === 'auto' && !state.custom)) && customError && source !== 'auto' ? customError : '';
+        function selectActive() {
+            const source = settings.get('source') || 'auto';
+            // Always show the bundled demo when a custom source is not available.
+            // A stale "Custom GIF only" setting must never leave the home tile blank.
+            state.active = source === 'demo' ? state.demo : (state.custom || state.demo);
+            state.name = !state.active ? 'No GIF' : state.active === state.custom ? 'custom.gif' : 'Built-in demo';
+            state.problem = !state.active ? ('Built-in GIF unavailable: ' + (state.demoError || 'resource missing')) :
+                source === 'custom' && !state.custom ? 'Custom GIF missing - playing built-in demo' : '';
             resetClock();
         }
         function reload() {
@@ -212,8 +224,10 @@ mgu.run({
                 cv.image(PIXEL_IMAGE, r.x, r.y, r.w, r.h);
             } else {
                 cv.text('No GIF available', PREVIEW_W / 2, 210, 56, '#f4f6ff', { align: 'center', font: 'bold' });
-                cv.text('Copy custom.gif into this app\'s data folder, then press Reload GIF',
-                    PREVIEW_W / 2, 280, 28, '#aab1c4', { align: 'center' });
+                cv.text(('Built-in demo failed: ' + (state.demoError || 'unknown cause')).slice(0, 90),
+                    PREVIEW_W / 2, 280, 25, '#ffb0a5', { align: 'center' });
+                cv.text('Press Reload GIF or scan the Phone upload QR code',
+                    PREVIEW_W / 2, 330, 25, '#aab1c4', { align: 'center' });
             }
             if (state.phone.enabled) {
                 cv.fillRect(1040, 0, 560, PREVIEW_H - 80, '#0b1221');
@@ -226,6 +240,15 @@ mgu.run({
                 } else {
                     cv.text(state.phone.status, 1320, 210, 25, '#ffb0a5', { align: 'center' });
                 }
+            }
+            if (state.help && !state.phone.enabled) {
+                cv.fillRect(760, 18, 814, 402, [6, 15, 30, 245]);
+                cv.text('ADD GIF HOME TO THE BMW HOME SCREEN', 798, 70, 27, '#f4f8ff', { font: 'bold' });
+                cv.text('1. Open the iDrive HOME/main menu.', 798, 132, 26, '#d5e7ff');
+                cv.text('2. Tilt the iDrive controller UP.', 798, 190, 26, '#d5e7ff');
+                cv.text('3. Choose Customize main menu.', 798, 248, 26, '#d5e7ff');
+                cv.text('4. Press + and choose GIF Home.', 798, 306, 26, '#d5e7ff');
+                cv.text('5. Choose the large tile, then Done.', 798, 364, 26, '#d5e7ff');
             }
             cv.fillRect(0, PREVIEW_H - 80, PREVIEW_W, 80, [7, 9, 19, 235]);
             cv.text('GIF HOME', 40, PREVIEW_H - 35, 28, '#f5f8ff', { font: 'bold' });
@@ -245,7 +268,12 @@ mgu.run({
         ui.onClick('BTN_SOURCE', () => settings.set('source', settings.get('source') === 'demo' ? 'auto' : 'demo'));
         ui.onClick('BTN_PHONE', togglePhone);
         ui.onClick('BTN_NEXT', nextIp);
-        ctx.loop('MAIN', 8, renderScreen);
+        ui.onClick('BTN_RELOAD', () => { loadDemo(); reload(); state.phone.status = 'GIF reloaded'; });
+        ui.onClick('BTN_HELP', () => { state.help = !state.help; state.screenDirty = true; });
+        ui.onVisible((name, visible) => { if (name === 'MAIN' && visible) state.screenDirty = true; });
+        // The native BMW HMI image path is the default. It works without
+        // mgu-renderd and avoids requiring a GPU overlay for the GIF preview.
+        ctx.loop('MAIN', 4, renderScreen);
         if (ctx.widget) {
             ctx.widget.loop(() => settings.get('widgetFps') || 4, widgetImage);
             ctx.widget.onChange(() => { state.widgetIndex = Object.create(null); });

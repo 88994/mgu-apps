@@ -143,17 +143,13 @@
       "id": "gif_home",
       "kind": "app",
       "title": "GIF Home",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "path": "apps/gif_home",
       "mguHmi": [
         "ID7"
       ],
-      "requires": {
-        "idrive7-renderd": "2.1.6",
-        "mgu-inputgate": "1.0.0"
-      },
       "build": {
-        "python": "tools/build_store_app.py",
+        "python": "tools/build_gif_home.py",
         "args": [
           "{id}"
         ],

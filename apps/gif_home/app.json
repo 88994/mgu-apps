@@ -2,7 +2,7 @@
   "id": "gif_home",
   "title": "GIF Home",
   "description": "Offline animated GIF home-screen widget with QR-code phone upload for iDrive 7",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "vendor": "custom",
   "loggingId": "GFI1",
   "iconGlyph": "GIF",
@@ -33,11 +33,23 @@
         ["BTN_SOURCE", "Switch GIF"],
         ["BTN_PHONE", "Phone upload"],
         ["BTN_NEXT", "Next IP"],
+        ["BTN_RELOAD", "Reload GIF"],
+        ["BTN_HELP", "Widget setup"],
         ["BTN_SETTINGS", "Settings"]
       ]
     }
   ],
   "settings": [
+    {
+      "key": "renderer",
+      "label": "App display mode",
+      "type": "choice",
+      "default": "software",
+      "options": [
+        ["software", "Native BMW display (recommended)"],
+        ["auto", "GPU renderer (experimental)"]
+      ]
+    },
     {
       "key": "source",
       "label": "Animation",
