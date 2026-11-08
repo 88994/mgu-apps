@@ -6,6 +6,7 @@ const mgu = require('./kit/mgu');
 const media = require('./media');
 const { VideoBridge, rendererRegister, videoOp, ID } = require('./video_bridge');
 const { Companion } = require('./companion');
+const { openEq } = require('./audio_eq');
 const qrcode = require('./qr_vendor');
 
 const W = 1600, H = 520;
@@ -128,6 +129,7 @@ mgu.run({
         ctx.ui.onClick('BTN_ACTION', action);
         ctx.ui.onClick('BTN_BACK', () => { stop(); tab(0); });
         ctx.ui.onClick('BTN_IMPORT', () => tab(3));
+        ctx.ui.onClick('BTN_AUDIO_EQ', () => openEq(ctx).catch((e) => { notice = String(e.message || e); }));
         ctx.ui.onVisible((name, visible) => {
             if (name === 'MAIN' && !visible && (video.playing || video.resolving)) {
                 stop(); notice = 'Playback stopped when the app was closed.';

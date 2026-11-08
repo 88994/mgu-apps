@@ -1,0 +1,19 @@
+{
+  "id": "mgu-equalizer-dsp",
+  "kind": "tool",
+  "version": "0.2.0",
+  "title": "Equalizer PCM DSP",
+  "description": "Seven parametric PCM filters for explicitly connected audio apps; stock CarPlay/radio routing not implemented",
+  "mguHmi": ["ID7"],
+  "files": [
+    {"path": "mgu-equalizer-dsp", "mode": "0755"},
+    {"path": "server.js", "mode": "0644"},
+    {"path": "core.js", "mode": "0644"},
+    {"path": "probe.js", "mode": "0644"},
+    {"path": "README.md", "mode": "0644"}
+  ],
+  "units": [{"name": "mgu-equalizer-dsp.service", "from": "mgu-equalizer-dsp.service"}],
+  "enable": [{"unit": "mgu-equalizer-dsp.service", "target": "multi-user.target"}],
+  "recmgr": ["mgu-equalizer-dsp"],
+  "restart": ["mgu-equalizer-dsp.service"]
+}

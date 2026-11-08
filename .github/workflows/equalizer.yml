@@ -1,0 +1,42 @@
+name: Equalizer DSP
+on:
+  push:
+    paths:
+      - 'apps/equalizer/**'
+      - 'apps/mgu_video_hub/**'
+      - 'native/equalizer-dsp/**'
+      - 'kit/runtime/dsp-client.js'
+      - 'tests/equalizer*'
+      - 'kit/tools/test_equalizer*'
+      - '.github/workflows/equalizer.yml'
+  pull_request:
+    paths:
+      - 'apps/equalizer/**'
+      - 'apps/mgu_video_hub/**'
+      - 'native/equalizer-dsp/**'
+      - 'kit/runtime/dsp-client.js'
+      - 'tests/equalizer*'
+      - 'kit/tools/test_equalizer*'
+      - '.github/workflows/equalizer.yml'
+permissions:
+  contents: read
+jobs:
+  dsp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/equalizer_dsp.test.js
+      - run: node kit/tools/test_equalizer.js
+      - run: node tests/equalizer_video_pipe.test.js
+      - run: python3 tests/equalizer_store.test.py
+  node8:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '8.17.0'
+      - run: node tests/equalizer_node8_smoke.js

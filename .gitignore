@@ -1,0 +1,6 @@
+oap-sdk/
+dist/
+qa/
+__pycache__/
+*.pyc
+node_modules/

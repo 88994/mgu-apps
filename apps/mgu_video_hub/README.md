@@ -77,3 +77,14 @@ entry; updates to this app need a version bump.
 node tests/video_hub.test.js
 python3 -c "import json,sys;sys.path.insert(0,'kit/tools');from build import build_ui;build_ui(json.load(open('apps/mgu_video_hub/app.json')))"
 ```
+
+## Audio EQ (0.1.1)
+
+ALSA audio now goes through the shared `mgu-equalizer-dsp` 0.2.0 PCM service
+before `aplay`. Install the updated Store dependency. The **Audio EQ** menu
+opens an in-app sheet for band gain and DSP/bypass changes during playback.
+It retains the existing stop-on-leave, focus and vehicle-movement rules.
+When the service is missing or stops responding, the stream falls back to
+unchanged PCM; it does not claim active filtering. ALSA output into the car
+still needs a compatible real MGU route. Stock CarPlay/radio are not connected
+to this DSP. See [Equalizer DSP](../equalizer/README.md).

@@ -27,3 +27,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+
+## Equalizer DSP
+
+The new biquad implementation uses the mathematical peaking-EQ formulae
+documented in the W3C Audio EQ Cookbook by Robert Bristow-Johnson:
+https://www.w3.org/TR/audio-eq-cookbook/. The filter, service and streaming
+client are new repository code; no Moonride, BMW DSP binary or firmware audio
+code is redistributed. Existing MGU App Kit runtime assets retain their
+previous notices.

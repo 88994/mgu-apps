@@ -76,6 +76,7 @@ class VideoBridge {
         this.position = 0; this.duration = null;
         this.playing = false; this.paused = false;
         this.child = null; this.audioDec = null; this.audioOut = null; this.resolving = null;
+        this.audioFilter = null; this.dspClient = opts.dspClient || null; this.dspRuntime = opts.dspRuntime;
         this.source = null; this.generation = 0; this.frames = 0; this.tail = Buffer.alloc(0);
         this.width = 640; this.height = 360; this.frameSize = 0;
     }
@@ -165,7 +166,12 @@ class VideoBridge {
         try {
             this.audioDec = cp.spawn(this.ffmpeg, args, {stdio: ['ignore', 'pipe', 'ignore']});
             this.audioOut = cp.spawn(this.aplay, ['-q', '-f', 'S16_LE', '-c', '2', '-r', '44100'], {stdio: ['pipe', 'ignore', 'ignore']});
-            this.audioDec.stdout.pipe(this.audioOut.stdin);
+            const Dsp = this.dspClient || require('./kit/dsp-client');
+            this.audioFilter = new Dsp.PcmFilter({ sampleRate: 44100, channels: 2, source: 'mgu_video_hub', runtime: this.dspRuntime,
+                onFallback: (why) => { this.log.warn('Video Hub: DSP bypass: ' + why); } });
+            this.audioDec.stdout.pipe(this.audioFilter).pipe(this.audioOut.stdin);
+            this.audioOut.stdin.on('error', e => { this.error = 'Audio output: ' + e.message; });
+            this.audioFilter.on('error', e => { this.error = 'Audio EQ: ' + e.message; this._stopAudio(); });
             this.audioDec.on('error', e => { this.error = 'Audio decoder: ' + e.message; });
             this.audioOut.on('error', e => { this.error = 'Audio output: ' + e.message; });
         } catch (e) { this.error = 'Audio unavailable: ' + e.message; this._stopAudio(); }
@@ -185,6 +191,7 @@ class VideoBridge {
         this.start(this.source, Math.max(0, this.position + delta), width, audio);
     }
     _stopAudio() {
+        if (this.audioFilter) { try { this.audioFilter.destroy(); } catch (_) {} this.audioFilter = null; }
         if (this.audioDec) { try { this.audioDec.kill('SIGCONT'); this.audioDec.kill('SIGKILL'); } catch (_) {} this.audioDec = null; }
         if (this.audioOut) { try { this.audioOut.kill('SIGCONT'); this.audioOut.kill('SIGKILL'); } catch (_) {} this.audioOut = null; }
     }

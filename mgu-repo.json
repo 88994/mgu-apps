@@ -120,7 +120,7 @@
       "id": "mgu_video_hub",
       "kind": "app",
       "title": "MGU Video Hub",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "path": "apps/mgu_video_hub",
       "icon": "icon.png",
       "mguHmi": [
@@ -128,7 +128,8 @@
       ],
       "requires": {
         "idrive7-renderd": "2.1.6",
-        "mgu-inputgate": "1.0.0"
+        "mgu-inputgate": "1.0.0",
+        "mgu-equalizer-dsp": "0.2.0"
       },
       "build": {
         "python": "tools/build_store_app.py",
@@ -230,6 +231,41 @@
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
+    },
+    {
+      "id": "equalizer",
+      "kind": "app",
+      "title": "Equalizer DSP (experimental)",
+      "version": "0.2.0",
+      "path": "apps/equalizer",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "requires": {
+        "idrive7-renderd": "2.1.6",
+        "mgu-inputgate": "1.0.0",
+        "mgu-equalizer-dsp": "0.2.0"
+      },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
+    },
+    {
+      "id": "mgu-equalizer-dsp",
+      "kind": "tool",
+      "title": "Equalizer PCM DSP",
+      "version": "0.2.0",
+      "path": "native/equalizer-dsp",
+      "mguHmi": [
+        "ID7"
+      ],
+      "uninstallable": true
     }
   ]
 }

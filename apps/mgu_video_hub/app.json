@@ -2,7 +2,7 @@
   "id": "mgu_video_hub",
   "title": "MGU Video Hub",
   "description": "Parked-only video library with optional YouTube stream support and phone import",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "vendor": "G21 Offline Lab",
   "loggingId": "OVH1",
   "iconGlyph": "VIDEO",
@@ -21,6 +21,7 @@
         ["BTN_ACTION", "Play / Pause"],
         ["BTN_BACK", "Back"],
         ["BTN_IMPORT", "Phone / USB"],
+        ["BTN_AUDIO_EQ", "Audio EQ"],
         ["BTN_SETTINGS", "Settings"]
       ]
     }

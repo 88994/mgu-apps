@@ -1,0 +1,20 @@
+[Unit]
+Description=MGU seven-band PCM equalizer
+After=oapcontroller.service
+RequiresMountsFor=/var/opt
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/var/opt/mgu-equalizer-dsp/current/mgu-equalizer-dsp
+User=root
+Group=12202
+UMask=0007
+RuntimeDirectory=mgu-equalizer-dsp
+RuntimeDirectoryMode=0770
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

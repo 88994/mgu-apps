@@ -1,6 +1,6 @@
 # MGU Apps — BMW iDrive 7
 
-Ten source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
+Eleven source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
 
 | App | Version | Function |
 | --- | --- | --- |
@@ -9,13 +9,28 @@ Ten source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu
 | `g21_wheelheat` | 0.4.15 | Background autostart, configurable heating repeat cooldown, persistent settings and offline full-diagnostic QR export |
 | `mgu_gamestation` | 0.2.0 (experimental) | NES, SNES, Game Boy/Color, Pong; iDrive singleplayer, phone singleplayer, two-phone multiplayer or hybrid; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
 | `mgu_gamesnacks` | 0.1.1 (preview) | Offline HTML5 game catalog and touch diagnostic preview; original game distribution and browser compatibility still under review. |
-| `mgu_video_hub` | 0.1.0 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
+| `mgu_video_hub` | 0.1.1 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
 | `gif_home` | 0.2.0 (experimental) | Animated home-screen widget with built-in BMW-style roundel; local GIF upload from iPhone using a temporary QR code. Large-tile support and phone connectivity require on-car verification. |
 | `custom_cluster` | 0.5.1 (experimental) | G80/G21/6WB previews, parked-only panels, new small shader probe, renderer diagnostics and QR log export; Waze/BMW map coexistence unverified. |
 | `mgu_phone_terminal` | 0.1.2 (experimental) | On-car QR pairing for a temporary phone-browser root command console. Requires the `mgu-phone-bridge` system tool (0.1.1); app-owned key provisioning and service diagnostics added; real MGU command/network operation not yet verified. |
+| `equalizer` | 0.2.0 (experimental) | Seven real parametric PCM DSP bands, gain/frequency/Q/preamp, profiles and native BMW tone controls. Video Hub PCM is connected; stock CarPlay/radio routing is not implemented. Vehicle audio output remains unverified. |
 | `light_show` | 0.1.0 (experimental) | Native strobe menu: six patterns, four front light pairs, tempo, automatic stop and separate screen preview. Requires stationary vehicle in P and identified BDC_G05. Physical lamp operation untested. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
+
+## Equalizer DSP (experimental)
+
+`equalizer` 0.2.0 adds seven parametric biquad filters that process actual S16LE
+PCM samples. The `mgu-equalizer-dsp` 0.2.0 tool is installed as its Store
+dependency. Each band supports 20–20,000 Hz, ±12 dB and Q 0.3–6; there are
+preamp, conservative automatic headroom, bypass and saved profiles. Video Hub
+0.1.1 connects decoder audio through the shared DSP before `aplay` and offers
+an **Audio EQ** sheet while playback stays on its existing guarded screen.
+The service does not intercept stock CarPlay, radio or Bluetooth; those paths
+require separate MGU audio-route evidence. Digital sample filtering is tested;
+physical output and performance on the G21 remain unverified.
+[Setup and limitations](apps/equalizer/README.md) ·
+[DSP protocol and read-only audio-path probe](native/equalizer-dsp/README.md).
 
 ## Custom Cluster (experimental)
 
