@@ -1,6 +1,6 @@
 # MGU Apps — BMW iDrive 7
 
-Nine source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
+Ten source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mgu-apps`, channel **main**.
 
 | App | Version | Function |
 | --- | --- | --- |
@@ -13,6 +13,7 @@ Nine source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/mg
 | `gif_home` | 0.2.0 (experimental) | Animated home-screen widget with built-in BMW-style roundel; local GIF upload from iPhone using a temporary QR code. Large-tile support and phone connectivity require on-car verification. |
 | `custom_cluster` | 0.5.1 (experimental) | G80/G21/6WB previews, parked-only panels, new small shader probe, renderer diagnostics and QR log export; Waze/BMW map coexistence unverified. |
 | `mgu_phone_terminal` | 0.1.2 (experimental) | On-car QR pairing for a temporary phone-browser root command console. Requires the `mgu-phone-bridge` system tool (0.1.1); app-owned key provisioning and service diagnostics added; real MGU command/network operation not yet verified. |
+| `light_show` | 0.1.0 (experimental) | Native strobe menu: six patterns, four front light pairs, tempo, automatic stop and separate screen preview. Requires stationary vehicle in P and identified BDC_G05. Physical lamp operation untested. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 

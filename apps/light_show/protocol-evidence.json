@@ -1,0 +1,396 @@
+{
+  "source": "User supplied Ecu.zip / Ecu/BDC_G05.prg",
+  "sha256": "1b3dfbb5bbf854cf3e2fa8ee35cf528bb4bc2fe09429a6cefacd4b441456e328",
+  "revision": "36.001",
+  "method": "Original STEUERN_IO bytecode executed with EdiabasX recording-only interface, aborted at first outgoing request; no real vehicle was contacted. BMW FAST header removed; no checksum removed.",
+  "identitySource": "idrive7-apps/apps/live_data/builtin/sgbd_index.json at 180537a0bdf39163046a6855e7928eb35bb47c7b",
+  "supportedIndex": "0F2680",
+  "vehicleTested": false,
+  "captured": [
+    {
+      "pair": "high",
+      "output": "FL_L",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "FL_L",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030700C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        7,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "high",
+      "output": "FL_L",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "FL_L",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030701C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        7,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "high",
+      "output": "FL_R",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "FL_R",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030800C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        8,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "high",
+      "output": "FL_R",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "FL_R",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030801C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        8,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "drl",
+      "output": "TFL_L",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "TFL_L",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030300C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        3,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "drl",
+      "output": "TFL_L",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "TFL_L",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030301C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        3,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "drl",
+      "output": "TFL_R",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "TFL_R",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030400C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        4,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "drl",
+      "output": "TFL_R",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "TFL_R",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030401C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        4,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "position",
+      "output": "POL_L",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "POL_L",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030900C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        9,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "position",
+      "output": "POL_L",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "POL_L",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030901C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        9,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "position",
+      "output": "POL_R",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "POL_R",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030A00C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        10,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "position",
+      "output": "POL_R",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "POL_R",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030A01C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        10,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "fog",
+      "output": "NSW_L",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "NSW_L",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030B00C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        11,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "fog",
+      "output": "NSW_L",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "NSW_L",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030B01C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        11,
+        1,
+        192
+      ]
+    },
+    {
+      "pair": "fog",
+      "output": "NSW_R",
+      "on": 0,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "NSW_R",
+        "0"
+      ],
+      "fastHex": "8740F12FE3B5030C00C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        12,
+        0,
+        192
+      ]
+    },
+    {
+      "pair": "fog",
+      "output": "NSW_R",
+      "on": 1,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "STA",
+        "NSW_R",
+        "1"
+      ],
+      "fastHex": "8740F12FE3B5030C01C0",
+      "uds": [
+        47,
+        227,
+        181,
+        3,
+        12,
+        1,
+        192
+      ]
+    },
+    {
+      "release": true,
+      "job": "STEUERN_IO",
+      "arguments": [
+        "ARG",
+        "LICHT_AUSGANG_DIGITAL_STEUERN",
+        "RCTECU"
+      ],
+      "fastHex": "8540F12FE3B500FF",
+      "uds": [
+        47,
+        227,
+        181,
+        0,
+        255
+      ]
+    }
+  ]
+}

@@ -186,13 +186,17 @@
       "version": "0.1.2",
       "path": "apps/mgu_phone_terminal",
       "icon": "icon.png",
-      "mguHmi": ["ID7"],
+      "mguHmi": [
+        "ID7"
+      ],
       "requires": {
         "mgu-phone-bridge": "0.1.1"
       },
       "build": {
         "python": "tools/build_store_app.py",
-        "args": ["{id}"],
+        "args": [
+          "{id}"
+        ],
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
@@ -203,8 +207,29 @@
       "title": "Phone Terminal Bridge",
       "version": "0.1.1",
       "path": "native/phone-bridge",
-      "mguHmi": ["ID7"],
+      "mguHmi": [
+        "ID7"
+      ],
       "uninstallable": true
+    },
+    {
+      "id": "light_show",
+      "kind": "app",
+      "title": "Light Show",
+      "version": "0.1.0",
+      "path": "apps/light_show",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
     }
   ]
 }
