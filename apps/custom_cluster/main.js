@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Custom Cluster 0.5.6 - dedicated HMI pages and staged, map-safe KOMBI probes.
+ * Custom Cluster 0.5.7 - in-page diagnostics and staged, map-safe KOMBI probes.
  * Stock is the default. Real values only can reach cluster-render; emulator
  * and demo values stay exclusively on the centre-screen preview.
  */
@@ -29,11 +29,23 @@ mgu.run({
             cluster.badge(bridge.reported() === 'opened');
         });
         let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
+        // On this ID7 firmware opening a second RHMI canvas state can silently
+        // fail. Keep the working MAIN HMI state and switch its content instead.
+        let currentPage = 'MAIN';
         const uiEvents = [];
         function uiEvent(event) {
             uiEvents.push(new Date().toISOString() + ' ' + event);
             if (uiEvents.length > 40) uiEvents.shift();
             log.info('cluster ui: ' + event);
+        }
+        function showPage(name) {
+            currentPage = name;
+            uiEvent('in-page ' + name);
+            // Reflect the current actions in the real HMI bar and its GPU bar.
+            // Settings remains the firmware-managed Settings button.
+            ui.text('BTN_TEST', name === 'MAIN' ? 'Parked panel test' : 'Back to cluster');
+            ui.text('BTN_DIAG', name === 'DIAGNOSTICS' ? 'Back to cluster' : 'Diagnostics');
+            ui.text('BTN_QR', name === 'QR_REPORT' ? 'Next QR page' : 'QR logs');
         }
         ui.onVisible((name, visible) => {
             if (name === 'MAIN' || name === 'DIAGNOSTICS' || name === 'QR_REPORT')
@@ -55,17 +67,19 @@ mgu.run({
         settings.onChange(syncSettings);
         car.onSample((d) => { if (!d.demo) cluster.sample(d); });
         ui.onClick('BTN_TEST', () => {
+            if (currentPage !== 'MAIN') return showPage('MAIN');
             uiEvent('parked test clicked');
             const enabled = cluster.armPanel();
             log.info('panel test: ' + (enabled ? 'armed for 12 s' : cluster.status().disarmReason));
         });
         ui.onClick('BTN_DIAG', () => {
-            uiEvent('open diagnostics');
+            if (currentPage === 'DIAGNOSTICS') return showPage('MAIN');
+            uiEvent('show diagnostics in main state');
             cluster.pollStatus(true);
-            return ui.open('DIAGNOSTICS');
+            return showPage('DIAGNOSTICS');
         });
         ui.onClick('BTN_DIAG_REFRESH', () => { uiEvent('refresh diagnostics'); cluster.pollStatus(true); });
-        ui.onClick('BTN_DIAG_HOME', () => { uiEvent('diagnostics back to main'); return ui.open('MAIN'); });
+        ui.onClick('BTN_DIAG_HOME', () => { uiEvent('diagnostics back to main'); return showPage('MAIN'); });
         // QR is a genuine HMI page; it is never a sticky mode of the main screen.
         // Each new report captures the current renderer state, including a running test.
         function captureQr() {
@@ -85,12 +99,12 @@ mgu.run({
                 log.warn('cluster QR: ' + qrError);
             }
         }
-        const openQr = () => { uiEvent('open QR screen'); captureQr(); return ui.open('QR_REPORT'); };
-        ui.onClick('BTN_QR', openQr);
+        const openQr = () => { uiEvent('show QR in main state'); captureQr(); return showPage('QR_REPORT'); };
+        ui.onClick('BTN_QR', () => currentPage === 'QR_REPORT' ? nextQrPage() : openQr());
         ui.onClick('BTN_DIAG_QR', openQr);
         ui.onClick('BTN_QR_NEW', captureQr);
-        ui.onClick('BTN_QR_HOME', () => { uiEvent('QR back to main'); return ui.open('MAIN'); });
-        ui.onClick('BTN_QR_NEXT', () => {
+        ui.onClick('BTN_QR_HOME', () => { uiEvent('QR back to main'); return showPage('MAIN'); });
+        function nextQrPage() {
             uiEvent('QR next page');
             if (!qrReport || !qrReport.pages.length) return captureQr();
             try {
@@ -102,7 +116,8 @@ mgu.run({
                 qrMatrix = null;
                 log.warn('cluster QR page: ' + qrError);
             }
-        });
+        }
+        ui.onClick('BTN_QR_NEXT', nextQrPage);
 
         // A stale Shortcut event is never displayed as proof that an app runs.
         const cleanup = setInterval(() => {
@@ -113,7 +128,7 @@ mgu.run({
         }, 250);
         process.once('exit', () => { clearInterval(cleanup); cluster.close(); bridge.stop(); });
 
-        ctx.loop('QR_REPORT', 2, () => {
+        function renderQr(target) {
             const t = ctx.theme();
             const cv = ctx.canvas(1600, 520).clear(t.bg);
             G.frame(cv, t, ['Custom Cluster', 'QR diagnostics'], 0, [{ text: 'OFFLINE LOG' }]);
@@ -121,7 +136,7 @@ mgu.run({
                 cv.text('QR export unavailable', 60, 130, 37, t.warn, { font: 'bold' });
                 cv.text('Error: ' + (qrError || 'No report generated').slice(0, 90), 60, 200, 23, t.text);
                 cv.text('Press New report to retry, or Back to cluster.', 60, 270, 24, t.dim);
-                return ui.image('QR_REPORT_GFX', cv);
+                return ui.image(target, cv);
             }
             cv.text('Cluster diagnostic QR export', 60, 98, 37, t.text, { font: 'bold' });
             cv.text('Page ' + (qrPage + 1) + ' / ' + qrReport.pages.length +
@@ -133,10 +148,11 @@ mgu.run({
             cv.text('To decode: tools/decode_custom_cluster_logs.py', 60, 407, 18, t.text);
             try { QR.draw(cv, qrMatrix, 1080, 75, 395); }
             catch (e) { cv.text('QR image error: ' + String(e.message).slice(0, 58), 60, 459, 20, t.warn); }
-            return ui.image('QR_REPORT_GFX', cv);
-        });
+            return ui.image(target, cv);
+        }
+        ctx.loop('QR_REPORT', 2, () => renderQr('QR_REPORT_GFX'));
 
-        ctx.loop('DIAGNOSTICS', 2, () => {
+        function renderDiagnostics(target) {
             const t = ctx.theme();
             const cv = ctx.canvas(1600, 520).clear(t.bg);
             const current = cluster.status();
@@ -163,10 +179,13 @@ mgu.run({
                 cv.text('No status reply yet. The renderer may not support status reports.', 48, 345, 16, t.dim);
             statusLines.forEach((line, i) =>
                 cv.text(line.slice(0, 205), 48, 345 + i * 15, 12, t.dim));
-            return ui.image('DIAGNOSTICS_GFX', cv);
-        });
+            return ui.image(target, cv);
+        }
+        ctx.loop('DIAGNOSTICS', 2, () => renderDiagnostics('DIAGNOSTICS_GFX'));
 
         ctx.loop('MAIN', 2, () => {
+            if (currentPage === 'DIAGNOSTICS') return renderDiagnostics('MAIN_GFX');
+            if (currentPage === 'QR_REPORT') return renderQr('MAIN_GFX');
             const t = ctx.theme(), d = car.data(), st = cluster.status();
             const cv = ctx.canvas(1600, 520).clear(t.bg);
             const layout = settings.get('layout');

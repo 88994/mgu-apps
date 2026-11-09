@@ -1,4 +1,18 @@
-# Custom Cluster 0.5.6 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.7 — BMW G21 / MGU iDrive 7
+
+## 0.5.7: Diagnostics and QR use the main HMI page
+
+- Diagnostics and the QR log now draw inside the existing MAIN page. This avoids
+  unreliable second RHMI canvas state transitions seen on the installed MGU.
+- Press **Diagnostics** to enter/leave Diagnostics; **QR logs** opens the
+  export and advances through QR pages; **Back to cluster** returns to the
+  design preview. The Settings button is unchanged.
+- A white spot in the parked Kombi test is the small `probe` marker selected
+  by default, not a failed full-cluster graphic. Full designs require choosing
+  `Selected full cluster design (experimental)` in Settings and still use the
+  parked-only, 12-second safety guard.
+- Repeating the test remains blocked while the real vehicle speed/RPM signals
+  are stale, even if the last received selector position was P.
 
 ## 0.5.6: Separate selector indication from telemetry freshness
 

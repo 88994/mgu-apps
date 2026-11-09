@@ -1,6 +1,6 @@
 'use strict';
-// Regressions: after a QR report or diagnostics visit, re-opening MAIN must
-// not keep a sticky full-screen diagnostics mode; pages must have clear exits.
+// Firmware regression: opening secondary RHMI canvas states may fail on ID7.
+// Diagnostics and QR must render in the proven MAIN state, with a way back.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -21,11 +21,14 @@ for (const screen of spec.screens) {
 }
 
 const clicks = new Map(), pages = [], loops = [], events = [];
+const labels = new Map(), renders = new Map(), drawn = [];
 let reportCount = 0;
 const ui = {
     onClick: (name, fn) => clicks.set(name, fn),
     onVisible: (fn) => events.push(fn),
     open: (name) => { pages.push(name); return Promise.resolve(); },
+    text: (name, value) => { labels.set(name, value); return Promise.resolve(); },
+    image: (name) => { drawn.push('image:' + name); return Promise.resolve(); },
 };
 const values = { layout: 'g80', panelTestMode: 'probe', panelTarget: 'panel',
     accent: 'm', colorMode: 'palette', colorBrightness: 100, cycleSeconds: 20,
@@ -35,12 +38,19 @@ const ctx = {
     dataDir: '/tmp', spec, ui,
     settings: { get: (key) => values[key], onChange() {} },
     log: { info() {}, warn() {} },
-    loop: (name) => loops.push(name),
+    loop: (name, fps, fn) => { loops.push(name); renders.set(name, fn); },
+    canvas: () => ({ clear() { return this; }, text(value) { drawn.push(String(value)); return this; } }),
+    theme: () => ({ bg: '#000', text: '#fff', dim: '#bbb', warn: '#e80' }),
 };
 const cluster = {
     settings() {}, sample() {}, observeVehicle() {}, apply() {}, pollStatus() {}, badge() {}, close() {},
     armPanel() { return false; },
-    status() { return { disarmReason: 'Selector N - P required' }; },
+    rendererStatus() { return ''; },
+    status() { return { disarmReason: 'Selector N - P required', testGuard: 'Selector N - P required',
+        rendererBackend: 'id7', ready: true, rendererTargets: 'panel:1920x720', panelActive: false,
+        panelTarget: 'panel', activeTestMode: '', panelLayer: 'inactive', panelTargetState: 'idle',
+        panelTargetReason: '', lastRefusal: '', gearPosition: 'N', speedKmh: 0, engineRpm: 780,
+        sampleAgeSeconds: 65 }; },
 };
 class FakeCar { onSample() {} data() { return { stage: 'N' }; } }
 class FakeCluster { constructor() { return cluster; } }
@@ -50,7 +60,7 @@ const report = () => { reportCount++; return { id: 'test', pages: ['page1', 'pag
 const deps = {
     './kit/mgu': { run: ({ start }) => start(ctx) },
     './kit/car': FakeCar,
-    './kit/gauges': {},
+    './kit/gauges': { frame() {} },
     './cluster_layers.js': { ClusterLayers: FakeCluster },
     './phone_bridge.js': { PhoneBridge: FakePhone },
     './waze_control.js': { WazeControl: FakeWaze },
@@ -71,23 +81,31 @@ for (const screen of spec.screens) for (const [id] of screen.buttons)
 
 async function test() {
     await clicks.get('BTN_DIAG')();
-    assert.strictEqual(pages.pop(), 'DIAGNOSTICS');
-    await clicks.get('BTN_DIAG_HOME')();
-    assert.strictEqual(pages.pop(), 'MAIN');
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Back to cluster');
+    await renders.get('MAIN')();
+    assert.ok(drawn.some((x) => x.includes('Test guard: Selector N')), 'diagnostics drawn on MAIN');
+    assert.ok(drawn.includes('image:MAIN_GFX'), 'must present on real MAIN image component');
+    await clicks.get('BTN_DIAG')();
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Diagnostics');
     await clicks.get('BTN_QR')();
-    assert.strictEqual(pages.pop(), 'QR_REPORT');
+    assert.strictEqual(labels.get('BTN_QR'), 'Next QR page');
+    await renders.get('MAIN')();
+    assert.ok(drawn.some((x) => x.includes('Page 1 / 2')), 'QR image drawn on MAIN');
     assert.strictEqual(reportCount, 1);
-    clicks.get('BTN_QR_NEXT')();
-    clicks.get('BTN_QR_NEXT')(); // wrap without closing the QR screen
+    clicks.get('BTN_QR')();
+    await renders.get('MAIN')();
+    assert.ok(drawn.some((x) => x.includes('Page 2 / 2')), 'QR bar button cycles pages');
+    clicks.get('BTN_QR')(); // wrap without closing the QR screen
     assert.strictEqual(reportCount, 1);
     clicks.get('BTN_QR_NEW')();
     assert.strictEqual(reportCount, 2);
-    await clicks.get('BTN_QR_HOME')();
-    assert.strictEqual(pages.pop(), 'MAIN');
+    await clicks.get('BTN_TEST')(); // back to cluster on QR page
+    assert.strictEqual(labels.get('BTN_TEST'), 'Parked panel test');
     await clicks.get('BTN_DIAG_QR')();
-    assert.strictEqual(pages.pop(), 'QR_REPORT');
+    assert.strictEqual(labels.get('BTN_QR'), 'Next QR page');
     assert.strictEqual(reportCount, 3);
+    assert.deepStrictEqual(pages, [], 'navigation must not call unreliable RHMI openState');
     assert.ok(events.length, 'HMI visibility should be logged');
-    console.log('custom-cluster HMI navigation and QR page lifecycle tests passed');
+    console.log('custom-cluster in-page HMI navigation and QR lifecycle tests passed');
 }
 test().catch((e) => { console.error(e); process.exitCode = 1; });
