@@ -3,9 +3,8 @@
 /**
  * Pure, deterministic comfort planner. No ECU access here.
  * Its intents must pass a separately authorized, fail-closed ECU controller.
- * One cycle per arming. The host may re-arm after a configured cooldown,
- * with fresh confirmed vehicle motion and no active sessions (manual cabin
- * settings remain authoritative).
+ * One cycle per verified vehicle-on session. The host never re-arms this
+ * planner based on elapsed time while the car stays on.
  */
 const COLD_DWELL_MS = 15000;
 const SENSOR_AGE_MS = 120000;
@@ -90,8 +89,16 @@ class ComfortAuto {
         if (this.active.size > 0) return false;
         this.fired = false;
         this.coldSince = null;
-        this.lastEvent = 'Automatic repeat armed; waiting for cold dwell';
+        this.lastEvent = 'New eligible ignition cycle; waiting for cold dwell';
         return true;
+    }
+    cancel() {
+        const names = Array.from(this.active.keys());
+        this.active.clear();
+        this.fired = true;
+        this.coldSince = null;
+        this.lastEvent = 'Automatic heating cancelled by user';
+        return names;
     }
     remaining(device, now) {
         const a = this.active.get(device);

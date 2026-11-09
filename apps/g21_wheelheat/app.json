@@ -1,8 +1,8 @@
 {
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
-  "description": "Persistent cold-weather heating automation with motion-aware BDC commands and readback",
-  "version": "0.4.15",
+  "description": "Ignition-aware cold-weather heating with manual stop, durable parking lockout and launch logs",
+  "version": "0.4.16",
   "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
@@ -22,6 +22,10 @@
     },
     "de.bmw.infrastructure.EnvironmentalInformation": {
       "ExteriorTemperature": "s"
+    },
+    "de.bmw.infrastructure.VehicleCondition": {
+      "_optional": "Ignition and vehicle-off monitoring; fail closed if unavailable",
+      "VehicleCondition": "s"
     }
   },
   "screens": [
@@ -41,6 +45,10 @@
         [
           "BTN_SETTINGS",
           "Settings"
+        ],
+        [
+          "BTN_STOP",
+          "STOP automatic heating"
         ]
       ]
     }
@@ -73,23 +81,25 @@
       ]
     },
     {
-      "key": "cycleRepeatMins",
-      "label": "Repeat automatic cycle after",
+      "key": "minVehicleOffMins",
+      "label": "Minimum vehicle OFF time before next auto start",
       "type": "number",
       "unit": "min",
       "default": 30,
       "steps": [
+        0,
+        10,
+        15,
+        20,
         30,
         45,
         60,
-        90,
-        120,
-        180
+        90
       ]
     },
     {
       "key": "testNextStartup",
-      "label": "Test on next app start (skip cooldown once)",
+      "label": "Test next ignition ON (skip parking time once)",
       "type": "bool",
       "default": false
     },

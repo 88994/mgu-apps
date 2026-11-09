@@ -21,16 +21,11 @@ mgu.run({
         ctx.log.info('[WHEELHEAT] all ECU writes require explicit automatic heating opt-in');
         const ctl = new SafeDiag(ctx, B.ECU, B.DID_HEAT);
         const auto = new ComfortAuto();
-        // Prevent a crash/restart of the OAP process from immediately
-        // triggering another physical heating cycle in the same cold start.
         const appStartedAt = Date.now();
-        const repeatMinutes = () => Cycle.minutes(ctx.settings.get('cycleRepeatMins'));
-        const previousCycle = Number(ctx.settings.get('_autoCycleAt'));
-        // A one-time, explicit TEST skips only the repeat lockout at the NEXT
-        // OAP/Headunit launch. It never turns heating on by itself, overrides
-        // the user's autoEnabled opt-in, or simulates temperature or speed.
-        // Fail closed unless disabling the test is verified on disk, otherwise
-        // a write failure could make every subsequent restart skip cooldown.
+        const startReason = String(ctx.app.startReason || 'UNKNOWN');
+        const offMinutes = () => Cycle.minutes(ctx.settings.get('minVehicleOffMins'));
+        // The one-shot test bypasses ONLY the parked-time requirement. A real
+        // ignition-ON signal, temperature and ECU guards are still required.
         const testRequested = ctx.settings.get('testNextStartup') === true;
         let testConsumed = false, testError = '';
         if (testRequested) {
@@ -43,21 +38,21 @@ mgu.run({
                 testError = String(e && (e.code || e.message) || e);
             }
         }
-        const restoredCycle = !testConsumed &&
-            Cycle.restore(previousCycle, appStartedAt, repeatMinutes());
-        if (restoredCycle) auto.fired = true;
-        let lastCycleAt = restoredCycle ? previousCycle : 0;
-        let cycleReason = testConsumed ?
-            'ONE-SHOT TEST: cooldown bypassed for this app launch only; '
-                + 'normal temperature/BDC/fresh speed safeguards still required' :
-            restoredCycle ?
-                'RESTORED: accepted ON ' + new Date(previousCycle).toISOString() +
-                '; age=' + Math.round((appStartedAt - previousCycle) / 1000) +
-                's; cooldown=' + repeatMinutes() + 'm (restart does not reset)' :
-                'NO RESTORED CYCLE: no accepted ON marker within ' + repeatMinutes() + 'm';
-        let cycleSaved = false;
+        const cycle = new Cycle.VehicleCycle({
+            offAt: ctx.settings.get('_vehicleOffAt'),
+            onAt: ctx.settings.get('_vehicleOnAt'),
+            usedOnAt: ctx.settings.get('_vehicleCycleUsedOnAt'),
+            cancelledOnAt: ctx.settings.get('_vehicleCancelledOnAt'),
+        }, offMinutes(), testConsumed);
+        // A process restart during driving is not a new car ignition.
+        auto.fired = true;
+        let cycleReason = cycle.reason;
         const outside = { value: null, at: 0, raw: null };
         const acknowledged = new Set();
+        const pendingStops = new Set();
+        const stopAttempts = new Map();
+        let firstUiAt = 0, uiOpenCount = 0, cancelGeneration = 0;
+        let lastVehicleRaw = '', lastVehicleLogAt = 0;
         let tab = 0, busy = false, statusBusy = false, statusAt = 0;
         const statusSamples = Object.create(null);
         let lastAction = 'No heating command has been sent.';
@@ -82,15 +77,58 @@ mgu.run({
             } catch (e) { eventWriteError = String(e.message || e); }
             ctx.log.info('[HEAT EVENT] ' + kind + ' ' + message);
         };
+        function persistCycle() {
+            const state = cycle.snapshot();
+            const updates = {
+                _vehicleOffAt: state.offAt,
+                _vehicleOnAt: state.onAt,
+                _vehicleCycleUsedOnAt: state.usedOnAt,
+                _vehicleCancelledOnAt: state.cancelledOnAt,
+            };
+            try {
+                ctx.settings.setMany(updates);
+                const saved = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
+                if (!Object.keys(updates).every(k => saved[k] === updates[k]))
+                    throw new Error('Ignition/cancel markers not verified on disk');
+                return true;
+            } catch (e) {
+                record('STATE SAVE ERROR', String(e && (e.message || e)));
+                return false;
+            }
+        }
+        record('PROCESS START', 'reason=' + startReason + ' pid=' + process.pid +
+            ' at=' + new Date(appStartedAt).toISOString() +
+            ' (NOT proof the UI was opened)');
         record('START', 'auto=' + ctx.settings.get('autoEnabled') +
             ' limit=' + ctx.settings.get('belowTemp') + ' C; loaded=' +
             ctx.settings.loadSource + '; data=' + ctx.dataDir);
         if (testRequested)
             record(testConsumed ? 'TEST' : 'TEST BLOCKED',
                 testConsumed ?
-                    'One-shot startup test consumed; repeat cooldown bypassed on this launch' :
+                    'One-shot test consumed; parking duration bypassed on next verified ignition ON' :
                     'One-shot startup test denied (reset not confirmed): ' + testError);
         record('CYCLE', cycleReason);
+        if (typeof ctx.ui.onVisible === 'function') {
+            ctx.ui.onVisible((name, shown) => {
+                if (name !== 'MAIN' && name !== 'SETTINGS') return;
+                if (shown) {
+                    uiOpenCount++;
+                    if (!firstUiAt) firstUiAt = Date.now();
+                }
+                record(shown ? 'UI OPEN' : 'UI HIDDEN', 'screen=' + name +
+                    ' startReason=' + startReason + ' elapsed=' +
+                    Math.round((Date.now() - appStartedAt) / 1000) + 's' +
+                    ' firstOpen=' + (firstUiAt ? new Date(firstUiAt).toISOString() : 'never') +
+                    ' opens=' + uiOpenCount + ' autoAlreadyFired=' + auto.fired);
+            });
+        }
+        if (typeof ctx.app.on === 'function')
+            ctx.app.on('entryPointExecute', (uuid, reason, name) => {
+                record('UI ENTRY', 'name=' + String(name) + ' reason=' + String(reason) +
+                    ' processAge=' + Math.round((Date.now() - appStartedAt) / 1000) + 's');
+            });
+        if (ctx.ui.isVisible('MAIN') || ctx.ui.isVisible('SETTINGS'))
+            record('UI ALREADY VISIBLE', 'when app logic initialized; reason=' + startReason);
         let lastPlannerStatus = '';
         let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
 
@@ -102,7 +140,12 @@ mgu.run({
                     events, eventWriteError,
                     state: {
                         appStartedAt: new Date(appStartedAt).toISOString(),
+                        processStartReason: startReason, firstUiAt: firstUiAt ?
+                            new Date(firstUiAt).toISOString() : null, uiOpenCount,
                         cycleReason, cycleAlreadyRun: auto.fired,
+                        vehicleCycle: cycle.snapshot(), vehicleMode: cycle.mode,
+                        vehicleCycleCanStart: cycle.canStart(),
+                        minVehicleOffMinutes: offMinutes(),
                         oneShotTestRequestedAtStartup: testRequested,
                         oneShotTestAppliedAtStartup: testConsumed,
                         oneShotTestResetError: testError || null,
@@ -110,12 +153,10 @@ mgu.run({
                             new Date(marker).toISOString() : null,
                         markerAgeSeconds: Number.isFinite(marker) && marker > 0 ?
                             Math.round((now - marker) / 1000) : null,
-                        repeatMinutes: repeatMinutes(),
-                        lastCycleAttemptOrAckAt: lastCycleAt > 0 ?
-                            new Date(lastCycleAt).toISOString() : null,
-                        nextRepeatEligibleAt: lastCycleAt > 0 ?
-                            new Date(lastCycleAt + repeatMinutes() * 60000).toISOString() : null,
-                        repeatRequiresFreshMovingSpeed: true,
+                        lastBdcPositiveOnAt: Number.isFinite(marker) && marker > 0 ?
+                            new Date(marker).toISOString() : null,
+                        noRepeatsWithinIgnition: true,
+                        manualStopPending: Array.from(pendingStops),
                         coldDwellStart: auto.coldSince,
                         activeHeaters: Array.from(auto.active).map(([name, state]) =>
                             ({ name, deadline: state.deadline, nextRenewAt: state.nextRenewAt })),
@@ -184,6 +225,54 @@ mgu.run({
             },
         }, ctx.log).catch(e => ctx.log.warn('Outdoor temperature: ' + e));
 
+        // This is BMW's vehicle condition, not engine RPM or vehicle speed:
+        // Mild-hybrid engine OFF, Auto Start/Stop and speed=0 are NOT parked
+        // ignition OFF. A missing provider prevents a new automatic cycle.
+        ctx.signals.watch('de.bmw.infrastructure.VehicleCondition', '1', {
+            VehicleCondition: value => {
+                const raw = value && value.statusConditionVehicle;
+                const before = cycle.mode;
+                if (Cycle.condition(raw) === 'on' && before !== 'on')
+                    cycle.offMinutes = offMinutes();
+                const observed = cycle.observe(raw, Date.now());
+                if (String(raw) !== lastVehicleRaw || observed.changed ||
+                    Date.now() - lastVehicleLogAt > 120000) {
+                    ctx.log.info('[WHEELHEAT VEHICLE] raw=' + String(raw) +
+                        ' decoded=' + Cycle.condition(raw) + ' previous=' + before +
+                        ' transition=' + observed.transition);
+                    lastVehicleRaw = String(raw);
+                    lastVehicleLogAt = Date.now();
+                }
+                if (!observed.changed) return;
+                if (!persistCycle()) {
+                    cycle.eligible = false;
+                    cycle.reason = 'VEHICLE STATE STORAGE NOT VERIFIED: automatic start blocked';
+                }
+                if (observed.transition === 'off' || observed.transition === 'ending') {
+                    cancelGeneration++;
+                    // Don't issue a BDC OFF write during ignition shutdown.
+                    // The automobile owns powerdown; drop app timers instead.
+                    const discarded = auto.cancel();
+                    pendingStops.clear();
+                    stopAttempts.clear();
+                    acknowledged.clear();
+                    record(observed.transition === 'off' ? 'VEHICLE OFF' : 'VEHICLE ENDING', observed.reason +
+                        '; stopped app timers=' + discarded.join(', ') +
+                        '; no ECU write during shutdown');
+                } else if (observed.transition === 'on') {
+                    if (cycle.canStart()) auto.rearm();
+                    record('VEHICLE ON', observed.reason +
+                        '; app started via ' + startReason +
+                        '; UI shown=' + (firstUiAt ? 'yes' : 'no'));
+                }
+                cycleReason = cycle.reason;
+                lastPlannerStatus = '';
+            },
+        }, ctx.log, { pollMs: 3000 }).then(sub => {
+            record('VEHICLE SIGNAL', sub.error ? 'FAILED ' + sub.error :
+                'subscription created; provider=' + (sub.available ? 'available' : 'not yet available'));
+        }).catch(e => record('VEHICLE SIGNAL ERROR', String(e && (e.message || e))));
+
         const config = () => ({
             autoEnabled: ctx.settings.get('autoEnabled') === true,
             belowTemp: Number(ctx.settings.get('belowTemp')),
@@ -200,11 +289,36 @@ mgu.run({
         const permitted = () => ctx.settings.get('autoEnabled') === true;
         const tempReading = now => B.temperatureInput(outside.value, outside.at, false, null, now);
 
+        function stopAutoHeating() {
+            cancelGeneration++;
+            const cancelled = cycle.cancel();
+            const active = auto.cancel();
+            acknowledged.forEach(name => {
+                pendingStops.add(name);
+                stopAttempts.set(name, 0);
+            });
+            if (cycle.mode === 'on' && !persistCycle())
+                record('STOP SAVE ERROR', 'Manual cancel not saved; keep app open until vehicle OFF');
+            cycleReason = cycle.reason;
+            lastPlannerStatus = '';
+            record('MANUAL STOP', 'source=app button; ignition=' + cycle.mode +
+                '; cancelled=' + cancelled + '; timers=' + active.join(', ') +
+                '; BDC OFF queued=' + Array.from(pendingStops).join(', ') +
+                ' (only if ECU guards permit)');
+        }
+
         // A planner event is not a live heater state. Report an actual request
         // only if the BDC positively acknowledged it. The vehicle's physical
         // response remains unverified until an on-car test.
         async function sendIntent(intent) {
             if (intent.type === 'OFF' && !acknowledged.has(intent.device)) return false;
+            const generation = cancelGeneration;
+            if (cycle.mode !== 'on' ||
+                (intent.type !== 'OFF' && !cycle.mayContinue())) {
+                record('BLOCK', intent.device + ' ' + intent.type +
+                    ': ignition not ON or manually cancelled');
+                return false;
+            }
             if (!permitted() || !ctl.online || !ctl.motionKnown) {
                 lastAction = intent.device + ': NOT sent (permission / BDC / speed-signal check).';
                 ctx.log.warn('[AUTO BLOCKED] ' + lastAction);
@@ -220,13 +334,17 @@ mgu.run({
             // The command can run while moving, but stale speed data blocks it.
             const remaining = 3000 - (Date.now() - ctl.lastWriteAt);
             if (remaining > 0) await wait(remaining);
-            if (!permitted() || !ctl.motionKnown || !ctl.online) {
+            if (!permitted() || !ctl.motionKnown || !ctl.online ||
+                cycle.mode !== 'on' || (intent.type !== 'OFF' &&
+                    (generation !== cancelGeneration || !cycle.mayContinue()))) {
                 lastAction = intent.device + ': NOT sent (conditions changed).';
                 record('BLOCK', lastAction);
                 return false;
             }
             if (!ctl.verified) await ctl.read(B.DID_HEAT);
-            if (!ctl.verified || !ctl.motionKnown || !permitted()) {
+            if (!ctl.verified || !ctl.motionKnown || !permitted() ||
+                cycle.mode !== 'on' || (intent.type !== 'OFF' &&
+                    (generation !== cancelGeneration || !cycle.mayContinue()))) {
                 lastAction = intent.device + ': NOT sent (' + ctl.info + ').';
                 record('BLOCK', lastAction);
                 return false;
@@ -238,16 +356,23 @@ mgu.run({
             record(ok ? 'ECU ACK' : 'ECU REJECT', lastAction + ' [' + ctl.info + ']');
             if (ok && (intent.type === 'ON' || intent.type === 'EXTEND')) acknowledged.add(intent.device);
             if (ok && intent.type === 'OFF') acknowledged.delete(intent.device);
-            if (ok && intent.type === 'ON' && !cycleSaved) {
-                cycleSaved = true;
+            // A UI cancellation can occur while a UDS write is awaiting its
+            // ACK. In that case queue a guarded OFF at the next control step.
+            if (ok && intent.type !== 'OFF' && generation !== cancelGeneration && cycle.mode === 'on')
+                pendingStops.add(intent.device);
+            if (cycle.mode !== 'on') {
+                acknowledged.clear();
+                pendingStops.clear();
+                stopAttempts.clear();
+            }
+            if (ok && intent.type === 'ON') {
                 const acceptedAt = Date.now();
-                lastCycleAt = acceptedAt;
                 ctx.settings.set('_autoCycleAt', acceptedAt);
                 cycleReason = 'POSITIVE BDC ON ACK: ' + intent.device + ' at ' +
                     new Date(acceptedAt).toISOString() +
                     '; marker file=' + (ctx.settings.saveError ? 'FAILED' : 'OK') +
-                    '; repeat after ' + repeatMinutes() +
-                    'm if moving; physical heating still unverified';
+                    '; no repeat until next ignition after ' + offMinutes() +
+                    'm vehicle OFF; physical heating still unverified';
                 record('CYCLE', cycleReason);
             }
             return ok;
@@ -292,47 +417,58 @@ mgu.run({
             busy = true;
             try {
                 const now = Date.now(), cfg = config(), reading = tempReading(now);
-                const recycle = Cycle.check({
-                    now, fired: auto.fired, lastCycleAt,
-                    repeatMinutes: repeatMinutes(),
-                    activeCount: auto.active.size,
-                    motionKnown: ctl.motionKnown, speedKmh: ctl.speed,
-                });
-                if (recycle.ready && auto.rearm()) {
-                    const oldCycleAt = lastCycleAt;
-                    lastCycleAt = 0;
-                    cycleSaved = false;
-                    cycleReason = 'RE-ARMED after ' + repeatMinutes() +
-                        'm: previous cycle at ' + new Date(oldCycleAt).toISOString() +
-                        '; fresh moving speed=' + ctl.speed.toFixed(1) + ' km/h';
-                    record('RECYCLE', cycleReason);
+                // STOP has priority over any new work. OFF writes are limited
+                // to heaters with a positive ACK for our own earlier ON/EXTEND.
+                for (const name of Array.from(pendingStops)) {
+                    if (cycle.mode !== 'on') { pendingStops.delete(name); continue; }
+                    const off = name === 'Steering wheel' ? { seconds: 0 } :
+                        { side: name === 'Driver seat' ? 'driver' : 'passenger', level: 0 };
+                    const attempts = (stopAttempts.get(name) || 0) + 1;
+                    stopAttempts.set(name, attempts);
+                    const ok = await sendIntent({ device: name, type: 'OFF', data: off });
+                    if (ok || !acknowledged.has(name) || attempts >= 3) {
+                        pendingStops.delete(name);
+                        stopAttempts.delete(name);
+                        if (!ok && acknowledged.has(name))
+                            record('STOP UNCONFIRMED', name + ': 3 bounded attempts failed; use BMW physical button');
+                    }
                 }
-                const canStart = cfg.autoEnabled && permitted() && ctl.online && ctl.motionKnown;
+                const canStart = cfg.autoEnabled && permitted() && cycle.canStart() &&
+                    ctl.online && ctl.motionKnown;
                 // Start, extend or stop a confirmed comfort-heating cycle while
                 // moving as long as speed data are fresh and BDC accepts writes.
-                const enabledForPlanner = cfg.autoEnabled && (canStart || auto.active.size > 0);
+                const enabledForPlanner = cfg.autoEnabled && cycle.mayContinue() &&
+                    (canStart || auto.active.size > 0);
                 const plannerStatus = !cfg.autoEnabled ? 'OFF (setting)'
+                    : cycle.mode !== 'on' ? 'WAITING FOR VERIFIED VEHICLE ON'
+                    : !cycle.mayContinue() ? 'MANUALLY CANCELLED THIS DRIVE'
+                    : !auto.fired && !cycle.canStart() ? 'PARKING TIME NOT MET / SAME DRIVE'
                     : reading.value === null ? 'WAITING FOR TEMP'
                     : now - reading.at > 120000 ? 'STALE TEMP'
                     : !ctl.online ? 'NO TASU CONNECTION'
                     : !ctl.motionKnown ? 'NO FRESH SPEED'
-                    : auto.fired ? (recycle.reason === 'await-moving' ?
-                        'RECYCLE WAITING FOR MOTION' : 'CYCLE ALREADY RUN') :
+                    : auto.fired ? 'CYCLE ALREADY RUN THIS DRIVE' :
                         reading.value > cfg.belowTemp ? 'ABOVE LIMIT' : 'COLD DWELL / READY';
                 if (plannerStatus !== lastPlannerStatus) {
                     record('AUTO', plannerStatus + '; T=' +
                         (reading.value === null ? '--' : reading.value.toFixed(1)) +
-                        ' C, limit=' + cfg.belowTemp + ' C, repeat=' + repeatMinutes() + 'm');
+                        ' C, limit=' + cfg.belowTemp + ' C, min vehicle OFF=' +
+                        offMinutes() + 'm; vehicle=' + cycle.mode);
                     lastPlannerStatus = plannerStatus;
                 }
                 const wasFired = auto.fired;
                 const intents = auto.step({ now, tempC: reading.value, tempAt: reading.at,
                     cfg: Object.assign({}, cfg, { autoEnabled: enabledForPlanner }) });
                 if (!wasFired && auto.fired) {
-                    lastCycleAt = now;
-                    cycleReason = 'IN-MEMORY PLANNER FIRED after cold dwell at ' +
-                        new Date(now).toISOString() + '; intents=' + intents.length +
-                        '; ECU confirmation not yet known';
+                    if (!cycle.consume() || !persistCycle()) {
+                        auto.cancel();
+                        cycle.eligible = false;
+                        record('CYCLE BLOCKED', 'Failed to persist one-cycle marker; no ECU requests sent');
+                        return;
+                    }
+                    cycleReason = 'PLANNER FIRED ONCE FOR IGNITION ' +
+                        new Date(cycle.onAt).toISOString() + '; intents=' + intents.length +
+                        '; no ECU confirmation yet; no repeats during this ignition';
                     record('CYCLE', cycleReason);
                 }
                 for (const intent of intents)
@@ -357,6 +493,7 @@ mgu.run({
             else if (tab === 1) refreshReadbacks().catch(e => { ctl.info = 'Read error: ' + e.message; });
             else if (tab === 3) nextQrPage();
         });
+        ctx.ui.onClick('BTN_STOP', stopAutoHeating);
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
         ctl.init().catch(e => { ctl.info = 'TASU unavailable: ' + e; });
 
@@ -365,13 +502,18 @@ mgu.run({
             const now = Date.now(), c = config(), r = tempReading(now);
             const fresh = r.value !== null && now - r.at <= 120000;
             const temp = fresh ? r.value.toFixed(1) + ' °C' : 'unavailable';
-            const startReady = c.autoEnabled && permitted() && ctl.online && ctl.motionKnown && fresh;
+            const startReady = c.autoEnabled && permitted() && cycle.canStart() &&
+                ctl.online && ctl.motionKnown && fresh;
             const status = !c.autoEnabled ? 'AUTOMATION OFF'
                     : auto.active.size ? 'HEATING SCHEDULE ACTIVE'
+                    : cycle.mode !== 'on' ? 'WAITING FOR VERIFIED IGNITION ON'
+                    : !cycle.mayContinue() ? 'CANCELLED FOR THIS DRIVE'
+                    : auto.fired ? 'CYCLE FINISHED FOR THIS DRIVE'
+                    : !cycle.canStart() ? 'NOT ELIGIBLE THIS DRIVE'
                     : !fresh ? 'WAITING FOR OUTDOOR TEMPERATURE'
                         : !ctl.online ? 'BDC CONNECTION UNAVAILABLE'
                             : !ctl.motionKnown ? 'WAITING FOR VEHICLE SPEED SIGNAL'
-                                : auto.fired ? 'CYCLE FINISHED' : 'READY / WAITING FOR COLD';
+                                : 'READY / WAITING FOR COLD';
             G.frame(cv, t, TABS, tab,
                 [{ text: auto.active.size ? 'AUTO SCHEDULED' :
                     startReady ? 'AUTO READY' : 'AUTO NOT READY', color: t.dim }]);
@@ -400,7 +542,7 @@ mgu.run({
                 text(cv, 'Passenger seat: ' + (c.seatPassenger ? c.seatMins + ' min / level ' + c.seatLevel : 'Off'),
                     820, 333, 26, t.text);
                 cv.fillRect(820, 356, 710, 1, '#2e4052');
-                text(cv, 'Remaining scheduled time', 820, 406, 22, t.dim);
+                text(cv, 'Remaining scheduled time (STOP button cancels)', 820, 406, 22, t.dim);
                 text(cv, 'Wheel ' + auto.remaining('Steering wheel', now) + 's   Seats ' +
                     Math.max(auto.remaining('Driver seat', now),
                         auto.remaining('Passenger seat', now)) + 's', 820, 453, 30, t.accent);
@@ -446,8 +588,8 @@ mgu.run({
                     const disk = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
                     diskStatus = 'READ OK | Auto ' + String(disk.autoEnabled) +
                         ' | Limit ' + String(disk.belowTemp) + ' C' +
-                        ' | Repeat ' + String(disk.cycleRepeatMins === undefined ?
-                            30 : disk.cycleRepeatMins) + 'm';
+                        ' | Min vehicle OFF ' + String(disk.minVehicleOffMins === undefined ?
+                            30 : disk.minVehicleOffMins) + 'm';
                 } catch (e) {
                     diskStatus = e && e.code === 'ENOENT' ? 'NO FILE YET (change a setting)' :
                         'NOT READABLE: ' + String(e.code || e.message || e);
