@@ -84,8 +84,23 @@ assert.strictEqual(altCluster.armPanel(), true, 'advertised alternative slot may
 assert.strictEqual(altRenderer.effects[0].target, 'panel201');
 altCluster.close();
 
+// A physical P report must never be mislabelled N simply because the engine
+// and speed notifications have gone quiet. The full-panel guard still blocks.
+const staleCluster = new ClusterLayers(log, null, new FakeRenderer());
+staleCluster.settings(settings());
+parked(staleCluster);
+staleCluster.lastSample = Date.now() - 31000;
+assert.strictEqual(staleCluster.status().gearPosition, 'P');
+assert.strictEqual(staleCluster.status().gearP, true);
+assert.strictEqual(staleCluster.status().live, false);
+assert.strictEqual(staleCluster.status().parked, false);
+assert.ok(staleCluster.status().sampleAgeSeconds >= 31);
+assert.ok(staleCluster.status().testGuard.includes('stale'));
+assert.strictEqual(staleCluster.armPanel(), false, 'stale telemetry never enables a panel test');
+staleCluster.close();
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluster-qr-test-'));
-const ctx = { dataDir: tempDir, spec: { version: '0.5.5' } };
+const ctx = { dataDir: tempDir, spec: { version: '0.5.6' } };
 const testReport = QR.report(ctx, cluster, 'auto', 'none');
 assert.ok(testReport.pages.length > 0);
 const payloads = testReport.pages.map((page, idx) => {

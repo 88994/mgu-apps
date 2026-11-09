@@ -1,4 +1,13 @@
-# Custom Cluster 0.5.5 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.6 — BMW G21 / MGU iDrive 7
+
+## 0.5.6: Separate selector indication from telemetry freshness
+
+- On the main screen, `Selector: P/N/...` is the last received selector value.
+  `Live speed/RPM` and `Test safe` are displayed independently; `P` alone is
+  never sufficient to arm a full-panel test.
+- Diagnostics and the offline QR report now include speed, RPM, selector and
+  sample age, to distinguish a missing gear event from stationary/stale data.
+- The strict parked-only safety guard is unchanged.
 
 **Experimental. Not validated on a real car. No authorization for driving with a replaced speedometer.**
 

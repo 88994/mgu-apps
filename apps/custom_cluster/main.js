@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Custom Cluster 0.5.4 - dedicated HMI pages and staged, map-safe KOMBI probes.
+ * Custom Cluster 0.5.6 - dedicated HMI pages and staged, map-safe KOMBI probes.
  * Stock is the default. Real values only can reach cluster-render; emulator
  * and demo values stay exclusively on the centre-screen preview.
  */
@@ -17,6 +17,7 @@ const { withAlpha } = require('./kit/canvas');
 const QR = require('./cluster_diagnostics.js');
 
 function fmt(v, unit) { return G.isNum(v) ? String(Math.round(v)) + (unit || '') : '--'; }
+function ageText(age) { return age === null ? 'no sample' : age + 's old'; }
 
 mgu.run({
     async start(ctx) {
@@ -153,11 +154,15 @@ mgu.run({
             cv.text('Slot reason: ' + (current.panelTargetReason || '-').slice(0, 112), 48, 216, 17, t.warn);
             cv.text('Last refusal: ' + (current.lastRefusal || '-').slice(0, 115), 48, 244, 17, t.warn);
             cv.text('Test guard: ' + current.testGuard.slice(0, 115), 48, 270, 18, t.warn);
-            cv.text('Renderer status lines (read-only):', 48, 298, 19, t.text);
+            cv.text('Last vehicle signals: selector=' + (current.gearPosition || 'unknown') +
+                ' | speed=' + (current.speedKmh === null ? '?' : current.speedKmh.toFixed(1)) +
+                ' km/h | rpm=' + (current.engineRpm === null ? '?' : Math.round(current.engineRpm)) +
+                ' | age=' + ageText(current.sampleAgeSeconds), 48, 295, 18, t.text);
+            cv.text('Renderer status lines (read-only):', 48, 322, 19, t.text);
             if (!statusLines.length)
-                cv.text('No status reply yet. The renderer may not support status reports.', 48, 320, 16, t.dim);
+                cv.text('No status reply yet. The renderer may not support status reports.', 48, 345, 16, t.dim);
             statusLines.forEach((line, i) =>
-                cv.text(line.slice(0, 205), 48, 320 + i * 15, 12, t.dim));
+                cv.text(line.slice(0, 205), 48, 345 + i * 15, 12, t.dim));
             return ui.image('DIAGNOSTICS_GFX', cv);
         });
 
@@ -202,8 +207,10 @@ mgu.run({
 
             G.panel(cv, t, 1120, 48, 456, 450, 'Renderer / panel test');
             cv.text('Cluster render: ' + (st.ready ? 'Connected' : 'Waiting'), 1150, 137, 24, st.ready ? '#2fd27a' : t.warn);
-            cv.text('Live data: ' + (st.live ? 'YES' : 'NO') + '  |  Gear P: ' + (st.parked ? 'YES' : 'NO'),
-                1150, 180, 21, st.parked ? '#2fd27a' : t.dim);
+            cv.text('Live speed/RPM: ' + (st.live ? 'YES' : 'NO') +
+                ' | Selector: ' + (st.gearPosition || '?'), 1150, 173, 19, st.parked ? '#2fd27a' : t.dim);
+            cv.text('Last values: ' + ageText(st.sampleAgeSeconds) +
+                ' | Test safe: ' + (st.parked ? 'YES' : 'NO'), 1150, 197, 17, st.parked ? '#2fd27a' : t.dim);
             cv.text('Panel: ' + (st.panelActive ? 'REQUESTED (' + st.secondsLeft + 's)' : 'STOCK'),
                 1150, 224, 20, st.panelActive ? '#2fd27a' : t.text);
             cv.text('Layer: ' + st.panelLayer.slice(0, 29) +

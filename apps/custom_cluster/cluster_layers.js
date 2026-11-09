@@ -239,8 +239,15 @@ class ClusterLayers {
         if (!wantBadge && this.badgeRef) { this.cr.drop(this.badgeRef); this.badgeRef = 0; }
     }
     status() {
+        // The last *reported* selector position is independent from the
+        // stricter parked-test guard. A stationary BMW can stop publishing
+        // speed/RPM changes, making telemetry stale even when P is selected.
         return { ready: this.ready, layer: this.layerState, target: this.targetState,
             live: this.live(), layout: this.options.layout, parked: this.parked(),
+            gearPosition: this.data.stage || null, gearP: this.data.stage === 'P',
+            speedKmh: finite(this.data.speed) ? this.data.speed : null,
+            engineRpm: finite(this.data.rpm) ? this.data.rpm : null,
+            sampleAgeSeconds: this.lastSample ? Math.max(0, Math.floor((Date.now() - this.lastSample) / 1000)) : null,
             panelActive: !!this.panelRef, panelLayer: this.panelLayerState,
             panelLayerReason: this.panelLayerReason,
             panelTarget: this.activePanelTarget, panelTargetState: this.panelTargetState,
