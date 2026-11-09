@@ -85,8 +85,8 @@ mgu.run({
                     ? 'Bridge service offline: update the tool, then restart iDrive.'
                     : /HTTP 503/i.test(err)
                         ? 'Bridge running but app registration/key is not ready.'
-                        : /App key setup/i.test(err)
-                            ? 'Check that this app can write its own data directory.'
+                        : /EACCES|EPERM|App key setup|Key access|Key creation/i.test(err)
+                            ? 'Key permission issue: update Bridge tool and restart iDrive.'
                             : 'Check the Bridge tool version and restart the app.';
                 cv.text(hint, 70, 335, 20, C.muted);
             } else if (info) {

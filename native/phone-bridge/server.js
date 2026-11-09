@@ -59,27 +59,53 @@ function addresses() {
     }));
     return out.sort((a, b) => a.score - b.score || a.interface.localeCompare(b.interface)).map((x) => ({ ip: x.ip, interface: x.interface }));
 }
-function findDataDir(options) {
-    if (options && options.dataDir) return options.dataDir;
+function findAppData(options) {
+    if (options && options.dataDir) {
+        const st = fs.statSync(options.dataDir);
+        return { dir: options.dataDir, uid: options.appUid === undefined ? st.uid : options.appUid,
+            gid: options.appGid === undefined ? st.gid : options.appGid };
+    }
     const f = '/var/opt/public/oap/oap_12201/data/apps/' + APP_ID + '.json';
     const reg = JSON.parse(fs.readFileSync(f, 'utf8'));
     if (!Number.isInteger(+reg.userId) || +reg.userId < 1 || +reg.userId > 999999) throw new Error('Unexpected app userId');
-    return '/var/opt/public/oap/oap_' + reg.userId + '/data';
-}
-function secretFromDataDir(dir) {
-    const secretPath = path.join(dir, 'phone-bridge.key');
+    const dir = '/var/opt/public/oap/oap_' + reg.userId + '/data';
     const st = fs.statSync(dir);
+    return { dir: dir, uid: +reg.userId, gid: st.gid };
+}
+function needsKeyOwnerMigration(foundUid, appUid, dirUid) {
+    if (foundUid === appUid) return false;
+    if (foundUid !== dirUid && foundUid !== 0) throw new Error('Unexpected bridge key owner');
+    return true;
+}
+function secretFromDataDir(app) {
+    const secretPath = path.join(app.dir, 'phone-bridge.key');
+    const st = fs.statSync(app.dir);
+    if (!st.isDirectory() || !Number.isInteger(app.uid) || app.uid < 1 && app.uid !== 0) throw new Error('Invalid app identity');
     try {
         const fd = fs.openSync(secretPath, 'wx', 0o600);
         try {
             fs.writeSync(fd, token() + '\n');
-            fs.fchownSync(fd, st.uid, st.gid);
+            fs.fchownSync(fd, app.uid, app.gid);
             fs.fchmodSync(fd, 0o600);
         } finally { fs.closeSync(fd); }
     } catch (e) { if (e.code !== 'EEXIST') throw e; }
-    const keyFile = fs.statSync(secretPath);
-    if ((keyFile.mode & 0o077) !== 0 || keyFile.uid !== st.uid) throw new Error('Insecure bridge key permissions/ownership');
-    return fs.readFileSync(secretPath, 'utf8').trim();
+    // Open a descriptor without following a symlink. The earlier daemon used
+    // data-dir ownership, which can be root even when MainApp runs the OAP app
+    // as its registered numeric userId. Repair that exact legacy case in place.
+    const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0);
+    const fd = fs.openSync(secretPath, flags);
+    try {
+        const keyFile = fs.fstatSync(fd);
+        if (!keyFile.isFile() || keyFile.nlink !== 1 || (keyFile.mode & 0o077) !== 0) throw new Error('Insecure bridge key file');
+        if (needsKeyOwnerMigration(keyFile.uid, app.uid, st.uid)) {
+            fs.fchownSync(fd, app.uid, app.gid);
+            fs.fchmodSync(fd, 0o600);
+            console.log('[phone-bridge] corrected legacy key owner to app uid ' + app.uid);
+        }
+        const key = fs.readFileSync(fd, 'utf8').trim();
+        if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('Invalid bridge key format');
+        return key;
+    } finally { fs.closeSync(fd); }
 }
 
 function makeBridge(options) {
@@ -99,7 +125,7 @@ function makeBridge(options) {
 
     function ensureKey() {
         if (controlKey) return controlKey;
-        try { controlKey = secretFromDataDir(findDataDir(options)); provisionError = ''; }
+        try { controlKey = secretFromDataDir(findAppData(options)); provisionError = ''; }
         catch (e) {
             const reason = e && (e.code || e.message) || 'unknown error';
             if (provisionError !== reason) console.warn('[phone-bridge] key provisioning pending:', reason);
@@ -116,7 +142,7 @@ function makeBridge(options) {
     function revoke() { terminateCommand(); pairToken = null; pairUntil = 0; sessionToken = null; sessionUntil = 0; }
     function status() {
         closed();
-        return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0, addresses: addresses(), port: publicPort, version: '0.1.1' };
+        return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0, addresses: addresses(), port: publicPort, version: '0.1.2' };
     }
 
     function local(req, res) {
@@ -244,4 +270,4 @@ function makeBridge(options) {
     return { start, stop, status };
 }
 
-module.exports = { makeBridge, start: () => makeBridge().start(), addresses };
+module.exports = { makeBridge, start: () => makeBridge().start(), addresses, needsKeyOwnerMigration };

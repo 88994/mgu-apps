@@ -33,10 +33,25 @@ function localKey(dataDir) {
     return key;
 }
 
+function keySetupError(error, dataDir) {
+    const code = error.code || error.message;
+    if (error.code !== 'EACCES' && error.code !== 'EPERM') return 'App key setup: ' + code;
+    const uid = typeof process.getuid === 'function' ? process.getuid() : '?';
+    try {
+        const owner = fs.statSync(path.join(dataDir, 'phone-bridge.key')).uid;
+        return 'Key access ' + code + ' (file uid ' + owner + ', app uid ' + uid + ')';
+    } catch (ignored) {
+        try {
+            const folder = fs.statSync(dataDir);
+            return 'Key creation ' + code + ' (dir uid ' + folder.uid + ', app uid ' + uid + ')';
+        } catch (ignoredAgain) { return 'App key setup: ' + code + ' (app uid ' + uid + ')'; }
+    }
+}
+
 function request(dataDir, method, endpoint, callback) {
     let key;
     try { key = localKey(dataDir); }
-    catch (e) { return callback(new Error('App key setup: ' + (e.code || e.message))); }
+    catch (e) { return callback(new Error(keySetupError(e, dataDir))); }
     const req = http.request({
         hostname: '127.0.0.1', port: PORT, path: endpoint, method,
         headers: { 'X-Bridge-Key': key, 'Content-Type': 'application/json' }, timeout: 1400,

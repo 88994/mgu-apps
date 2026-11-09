@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const { makeBridge } = require('../native/phone-bridge/server');
+const { makeBridge, needsKeyOwnerMigration } = require('../native/phone-bridge/server');
 const { localKey } = require('../apps/mgu_phone_terminal/control');
 
 function httpRequest(port, method, endpoint, body, extra) {
@@ -122,4 +122,13 @@ async function testAppOwnedKey() {
     }
 }
 
+function testLegacyOwnerPolicy() {
+    assert.strictEqual(needsKeyOwnerMigration(12237, 12237, 0), false);
+    assert.strictEqual(needsKeyOwnerMigration(0, 12237, 0), true, 'legacy root-owned key must be repaired');
+    assert.strictEqual(needsKeyOwnerMigration(0, 12237, 12237), true, 'root-owned key must be repaired even if the folder is app-owned');
+    assert.throws(() => needsKeyOwnerMigration(12238, 12237, 0), /Unexpected bridge key owner/, 'a different OAP user must not be trusted');
+    console.log('Legacy key owner policy tests passed');
+}
+
+testLegacyOwnerPolicy();
 test().then(testLateInstall).then(testAppOwnedKey).catch((e) => { console.error(e.stack || e); process.exitCode = 1; });
