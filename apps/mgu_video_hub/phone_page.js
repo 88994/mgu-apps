@@ -22,6 +22,8 @@ progress{width:100%;height:10px;accent-color:#66d9ff}.row{display:flex;gap:10px}
 <section><h2>YouTube</h2><input id="link" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
 <button id="add">Send link to car</button><p class="sub">Playback on the MGU is experimental and requires an Internet uplink, ffmpeg and yt-dlp on the head unit. No videos are downloaded from YouTube.</p></section>
 <section><h2>Status</h2><div id="status">Waiting</div><div id="error"></div><button class="ghost" id="refresh">Refresh</button></section>
+<section><h2>Diagnostics / Logs</h2><p class="sub">Download the app's diagnostic JSON to send it for troubleshooting. Includes timestamps, player errors, decoder availability and MGU Store Internet status. Pairing tokens and stream URLs are excluded.</p>
+<button id="download" class="ghost">Download diagnostic JSON</button></section>
 <script>
 const token=new URLSearchParams(location.search).get('t');
 const el=id=>document.getElementById(id);
@@ -38,7 +40,8 @@ x.upload.onprogress=e=>{if(e.lengthComputable)p.value=Math.floor(100*e.loaded/e.
 x.onload=()=>{el('upload').disabled=false;try{const j=JSON.parse(x.responseText);if(x.status!==201)throw Error(j.error);msg('Imported: '+j.name);el('video').value=''}catch(e){msg('',e.message)}};
 x.onerror=()=>{el('upload').disabled=false;msg('','Network connection failed')};x.send(file)}
 async function refresh(){try{const r=await fetch(api('/status'));const j=await r.json();
-if(!r.ok)throw Error(j.error);msg(j.files+' videos on car; '+j.links+' YouTube links')}
+if(!r.ok)throw Error(j.error);msg(j.files+' videos on car; '+j.links+' YouTube links; '+j.logs+' log entries')}
 catch(e){msg('',e.message)}}
-el('add').onclick=sendLink;el('upload').onclick=upload;el('refresh').onclick=refresh;refresh();
+el('add').onclick=sendLink;el('upload').onclick=upload;el('refresh').onclick=refresh;
+el('download').onclick=()=>{location.assign(api('/diagnostics.json'))};refresh();
 </script></main></body></html>`;

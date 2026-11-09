@@ -8,6 +8,7 @@ const { VideoBridge, rendererRegister, videoOp, ID } = require('./video_bridge')
 const { Companion } = require('./companion');
 const { readNetworkStatus } = require('./network_status');
 const { StoreUplink } = require('./uplink');
+const { Diagnostics, safeText } = require('./diagnostics');
 const { openEq } = require('./audio_eq');
 const qrcode = require('./qr_vendor');
 
@@ -51,17 +52,27 @@ function saveLinks(dir, links) {
 mgu.run({
     async start(ctx) {
         const log = ctx.log;
+        const diagnostics = new Diagnostics(ctx.dataDir, ctx.spec && ctx.spec.version || '0.1.4');
+        const record = (level, event, detail) => diagnostics.add(level, event, detail);
         const uplink = new StoreUplink(ctx.dataDir, log);
         uplink.start();
         const video = new VideoBridge(log, {
             proxyProvider: () => uplink.ownLease() ? uplink.proxyUrl : null,
             mediaProxyProvider: () => uplink.ownLease() ? uplink.mediaProxyUrl : null,
+            onEvent: record,
         });
         let page = 0, selected = 0, startAt = 0, files = [], links = loadLinks(ctx.dataDir);
         let notice = '', lastScan = 0, lastVideoBind = 0, boundGpu = null;
         let network = {ready:false, error:'Network tool not responding'};
         let lastNetworkPoll = 0, lastNetworkReply = 0, networkPollPending = false;
+        let lastNetworkState = '', lastUplinkState = '', lastRendererReady = null, lastVehicleState = '';
+        let lastPhoneError = '', lastUplinkError = '';
+        let lastDiagnosticPoll = 0;
         let speed = null, speedAt = 0, lastSource = null, importCount = 0;
+        record('INFO', 'app.started', 'Node ' + process.version + ' / ' + process.arch +
+            '; ffmpeg=' + !!video.ffmpeg + '; yt-dlp=' + !!video.resolver + '; aplay=' + !!video.aplay);
+        if (!video.ffmpeg) record('WARN', 'decoder.missing', 'ffmpeg not installed or not executable for OAP user');
+        if (!video.resolver) record('WARN', 'youtube.resolver_missing', 'yt-dlp not installed or not executable for OAP user');
         const canPlay = () => speed !== null && Date.now() - speedAt < 5000 && speed <= .5;
         const speedHint = () => speed === null || Date.now() - speedAt >= 5000 ?
             'Waiting for real vehicle-speed data. Playback is locked.' :
@@ -73,31 +84,68 @@ mgu.run({
                     speed = raw * .015625; speedAt = Date.now();
                     if (!canPlay() && (video.playing || video.resolving)) {
                         video.stop(); notice = 'Playback stopped: moving vehicle.';
+                        record('WARN', 'safety.playback_stopped', 'Vehicle speed exceeds parked threshold');
                     }
                 }
             },
         }, log, {pollMs:2000}).then(s => {
-            if (s && s.error) log.warn('[VideoHub] speed: ' + s.error);
-        }).catch(e => log.warn('[VideoHub] speed: ' + e.message));
+            if (s && s.error) {
+                log.warn('[VideoHub] speed: ' + s.error);
+                record('WARN', 'vehicle.signal_error', s.error);
+            }
+        }).catch(e => {
+            log.warn('[VideoHub] speed: ' + e.message);
+            record('ERROR', 'vehicle.watch_failed', e.message);
+        });
 
         function rescan() {
+            const previous = files.length;
             files = media.scan(ctx.dataDir);
             selected = Math.max(0, Math.min(selected, Math.max(0, entries().length - 1)));
             lastScan = Date.now();
+            if (files.length !== previous) record('INFO', 'library.changed', 'files=' + files.length);
         }
         function addYoutube(id) {
             links = links.filter(x => x !== id).concat([id]).slice(-100);
             saveLinks(ctx.dataDir, links);
             notice = 'Added YouTube video ' + id;
             log.info('[VideoHub] YouTube video added: ' + id);
+            record('INFO', 'youtube.link_added', 'videoId=' + id);
+        }
+        function statusSnapshot() {
+            return {
+                capabilities:{rendererV4:gpuReady(), ffmpeg:!!video.ffmpeg,
+                    ytDlp:!!video.resolver, aplay:!!video.aplay},
+                uplink:{state:uplink.status(), appLease:!!uplink.ownLease()},
+                phone:{serverListening:phone.listening, firewallReady:!!network.ready,
+                    firewallError:safeText(network.error || phone.error || '')},
+                vehicle:{speedState:speedHint() || 'Parked and signal fresh', playbackAllowed:canPlay()},
+                player:{status:safeText(video.status), error:safeText(video.error),
+                    frames:video.frames, sourceType:lastSource ? lastSource.type : null,
+                    playing:video.playing, paused:video.paused},
+                library:{files:files.length, youtubeLinks:links.length, imports:importCount},
+            };
         }
         const phone = new Companion(ctx.dataDir, {
             youtube: addYoutube,
-            upload: name => { importCount++; rescan(); notice = 'Imported ' + name; },
+            upload: name => {
+                importCount++; rescan(); notice = 'Imported ' + name;
+                record('INFO', 'phone.upload_completed', 'file=' + name);
+            },
             fileCount: () => files.length,
             linkCount: () => links.length,
+            logCount: () => diagnostics.events.length,
+            failure: (event, detail) => record('WARN', event, detail),
+            diagnostics: () => {
+                record('INFO', 'diagnostics.exported', 'Phone diagnostic JSON requested');
+                return diagnostics.snapshot(statusSnapshot());
+            },
         }, log);
-        try { phone.start(); } catch (e) { phone.error = e.message; log.warn('[VideoHub] phone server: ' + e.message); }
+        try { phone.start(); record('INFO', 'phone.server_starting', 'port=' + phone.port); }
+        catch (e) {
+            phone.error = e.message; log.warn('[VideoHub] phone server: ' + e.message);
+            record('ERROR', 'phone.server_failed', e.message);
+        }
         rescan();
         const link = phone.link();
         function refreshNetwork() {
@@ -107,6 +155,11 @@ mgu.run({
                 networkPollPending = false;
                 network = error ? {ready:false, error:'Network tool unavailable: ' + error.message} : result;
                 lastNetworkReply = Date.now();
+                const state = network.ready ? 'ready' : network.error ? 'error:' + safeText(network.error) : 'waiting';
+                if (state !== lastNetworkState) {
+                    lastNetworkState = state;
+                    record(network.ready ? 'INFO' : 'WARN', 'phone.network_state', state);
+                }
             });
         }
         function entries() {
@@ -120,10 +173,28 @@ mgu.run({
         }
         function stop() { video.stop(); lastVideoBind = 0; }
         function play(item, seek) {
-            if (!item) { notice = 'Select a video first.'; return; }
-            if (!canPlay()) { notice = speedHint(); return; }
-            if (!gpuReady()) { notice = 'Video renderer v4 unavailable; check Connection.'; return; }
-            if (!video.ffmpeg) { notice = 'ffmpeg missing on MGU; check Connection.'; return; }
+            if (!item) {
+                notice = 'Select a video first.';
+                record('WARN', 'playback.blocked', 'No video selected');
+                return;
+            }
+            record('INFO', 'playback.request', 'source=' + (item.type || 'local') +
+                (item.id ? ' videoId=' + item.id : '') + ' seek=' + (seek || 0));
+            if (!canPlay()) {
+                notice = speedHint();
+                record('WARN', 'safety.playback_blocked', notice);
+                return;
+            }
+            if (!gpuReady()) {
+                notice = 'Video renderer v4 unavailable; check Connection.';
+                record('ERROR', 'renderer.unavailable', notice);
+                return;
+            }
+            if (!video.ffmpeg) {
+                notice = 'ffmpeg missing on MGU; check Connection.';
+                record('ERROR', 'decoder.missing', notice);
+                return;
+            }
             lastSource = item.type === 'youtube' || item.id && /^[A-Za-z0-9_-]{11}$/.test(item.id) ?
                 {type:'youtube', id:item.id, name:item.name} : {type:'local', path:item.path, name:item.name};
             video.start(lastSource, seek || 0, Number(ctx.settings.get('resolution')), ctx.settings.get('audio'));
@@ -135,6 +206,7 @@ mgu.run({
                 if (video.child) video.pause();
                 else if (lastSource) play(lastSource, video.position);
             } else if (page === 0 || page === 1) play(entries()[selected]);
+            else if (page === 4) tab(3);
             else { page = 0; rescan(); }
         }
         function tab(i) {
@@ -145,20 +217,25 @@ mgu.run({
         }
         ctx.ui.onClick('BTN_TAB', () => tab((page + 1) % TABS.length));
         ctx.ui.onClick('BTN_ACTION', action);
-        ctx.ui.onClick('BTN_BACK', () => { stop(); tab(0); });
+        ctx.ui.onClick('BTN_BACK', () => { if (page === 4) tab(3); else { stop(); tab(0); } });
         ctx.ui.onClick('BTN_IMPORT', () => tab(3));
         ctx.ui.onClick('BTN_AUDIO_EQ', () => openEq(ctx).catch((e) => { notice = String(e.message || e); }));
         ctx.ui.onVisible((name, visible) => {
             if (name === 'MAIN' && !visible && (video.playing || video.resolving)) {
                 stop(); notice = 'Playback stopped when the app was closed.';
+                record('WARN', 'safety.screen_hidden', notice);
             }
         });
         if (ctx.ui.onFocus) ctx.ui.onFocus(() => {
             if (!ctx.ui.hasFocus('MAIN') && (video.playing || video.resolving)) {
                 stop(); notice = 'Playback stopped: another screen has focus.';
+                record('WARN', 'safety.focus_lost', notice);
             }
         });
-        const onExit = () => { stop(); phone.stop(); uplink.stop(); };
+        const onExit = () => {
+            record('INFO', 'app.exiting', 'Stopping video and companion');
+            stop(); phone.stop(); uplink.stop();
+        };
         process.on('exit', onExit);
 
         function drawHeader(cv) {
@@ -167,7 +244,7 @@ mgu.run({
             text(cv, canPlay() ? 'PARKED' : 'PLAYBACK LOCKED', 1540, 49, 17,
                 canPlay() ? COLOR.green : COLOR.red, {align:'right'});
             TABS.forEach((t, i) => {
-                const x = 45 + i * 385, current = page === i;
+                const x = 45 + i * 385, current = page === i || page === 4 && i === 3;
                 cv.roundRect(x, 69, 368, 48, 12, current ? '#24475c' : COLOR.panel);
                 if (current) cv.fillRect(x + 14, 112, 338, 4, COLOR.cyan);
                 text(cv, t.toUpperCase(), x + 184, 101, 19, current ? COLOR.white : COLOR.muted, {align:'center'});
@@ -257,15 +334,72 @@ mgu.run({
                 text(cv, r[0], 380, y, 17, COLOR.muted);
                 text(cv, trim(r[1], 49), 740, y, 17, r[1].indexOf('READY') === 0 ? COLOR.green : COLOR.white);
             });
-            btn(cv, 'Rescan library', 1135, 390, 360, 53, () => { rescan(); notice = files.length + ' media files found'; }, 'RESCAN');
+            btn(cv, 'Rescan library', 1160, 320, 330, 50, () => {
+                rescan(); notice = files.length + ' media files found';
+                record('INFO', 'library.rescanned', 'files=' + files.length);
+            }, 'RESCAN');
+            btn(cv, 'Diagnostics / Logs', 1160, 389, 330, 52, () => tab(4), 'DIAGNOSTICS');
             if (phone.error) text(cv, trim(phone.error, 70), 90, 479, 18, COLOR.red);
+        }
+        function drawDiagnostics(cv) {
+            cv.roundRect(49, 140, 1497, 352, 19, COLOR.panel);
+            text(cv, 'VIDEO HUB  /  DIAGNOSTICS', 78, 179, 27, COLOR.white);
+            const ready = !!(link && phone.listening && network.ready &&
+                Date.now() - lastNetworkReply < 6000);
+            const download = link ? link.replace('/?t=', '/diagnostics.json?t=') : null;
+            if (ready && download) qrDraw(cv, download, 95, 204, 222);
+            else {
+                cv.roundRect(95, 204, 222, 222, 12, '#0b1726');
+                text(cv, 'QR LOCKED', 206, 327, 23, COLOR.amber, {align:'center'});
+            }
+            text(cv, ready ? 'Scan to download diagnostic JSON' : 'Waiting for BMW Wi-Fi firewall',
+                93, 456, 17, ready ? COLOR.cyan : COLOR.amber);
+            text(cv, diagnostics.events.length + ' saved events  /  current and previous sessions',
+                370, 220, 20, COLOR.muted);
+            diagnostics.recent(6).forEach((entry, i) => {
+                const y = 256 + i * 31;
+                const line = entry.at.slice(11, 19) + '  ' + entry.level + '  ' + entry.event +
+                    (entry.detail ? ': ' + entry.detail : '');
+                text(cv, trim(line, 106), 371, y, 17,
+                    entry.level === 'ERROR' ? COLOR.red : entry.level === 'WARN' ? COLOR.amber : COLOR.white);
+            });
+            btn(cv, 'Back to Connection', 1135, 439, 364, 48, () => tab(3), 'DIAG_BACK');
         }
         ctx.loop('MAIN', 12, () => {
             if (Date.now() - lastNetworkPoll > 2500) {
                 lastNetworkPoll = Date.now(); refreshNetwork();
             }
             // Stale or missing speed must fail closed, even without another signal event.
-            if (!canPlay() && (video.playing || video.resolving)) { stop(); notice = speedHint(); }
+            if (!canPlay() && (video.playing || video.resolving)) {
+                stop(); notice = speedHint();
+                record('WARN', 'safety.signal_stale', notice);
+            }
+            if (Date.now() - lastDiagnosticPoll > 3000) {
+                lastDiagnosticPoll = Date.now();
+                const uplinkState = uplink.status();
+                if (uplinkState !== lastUplinkState) {
+                    lastUplinkState = uplinkState;
+                    record(uplink.ownLease() ? 'INFO' : 'WARN', 'uplink.state', uplinkState);
+                }
+                if (uplink.error && uplink.error !== lastUplinkError) {
+                    lastUplinkError = uplink.error;
+                    record('ERROR', 'uplink.proxy_failed', uplink.error);
+                }
+                if (phone.error && phone.error !== lastPhoneError) {
+                    lastPhoneError = phone.error;
+                    record('ERROR', 'phone.server_error', phone.error);
+                }
+                const rendererReady = gpuReady();
+                if (rendererReady !== lastRendererReady) {
+                    lastRendererReady = rendererReady;
+                    record(rendererReady ? 'INFO' : 'WARN', 'renderer.state', rendererReady ? 'READY' : 'NOT AVAILABLE');
+                }
+                const vehicleState = canPlay() ? 'PARKED' : speedHint();
+                if (vehicleState !== lastVehicleState) {
+                    lastVehicleState = vehicleState;
+                    record(canPlay() ? 'INFO' : 'WARN', 'vehicle.speed_state', vehicleState);
+                }
+            }
             if (Date.now() - lastScan > 15000 && page === 0) rescan();
             const cv = ctx.canvas(W, H);
             cv.clear(COLOR.bg);
@@ -273,6 +407,7 @@ mgu.run({
             if (page === 0) drawList(cv, 'local');
             else if (page === 1) drawList(cv, 'youtube');
             else if (page === 2) drawPlayer(cv);
+            else if (page === 4) drawDiagnostics(cv);
             else drawConnection(cv);
             if (notice && page !== 2) {
                 cv.roundRect(50, 451, 950, 52, 11, '#4a3339');

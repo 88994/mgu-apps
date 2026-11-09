@@ -1,4 +1,4 @@
-# MGU Video Hub 0.1.3 (experimental)
+# MGU Video Hub 0.1.4 (experimental)
 
 An independent BMW iDrive 7 / MGU video app in `NamelsMissing/mgu-apps`.
 UI language: English. It never writes to vehicle control units.
@@ -28,6 +28,15 @@ UI language: English. It never writes to vehicle control units.
 - **Player**: video over mgu-render's protocol v4 (I420 frames in a 3-slot
   `/dev/shm/mgu-video-*` ring); pause/resume, 15-second seek, stop. Touch
   targets and iDrive navigation are provided by the shared MGU kit.
+- **Diagnostics / Logs (0.1.4)**: open **Connection → Diagnostics / Logs**
+  to view the latest events and scan a QR code that downloads a JSON report
+  directly to the phone. Alternatively open the existing phone companion page
+  and tap **Download diagnostic JSON**. The bounded log survives app restarts
+  in `data/video-hub-diagnostics.json`. It records app startup, tool availability,
+  uplink and Wi-Fi/firewall state changes, renderer and parked-guard status,
+  media imports and YouTube links, playback attempts, ffmpeg/yt-dlp errors,
+  first decoded frames and process exits. Pairing tokens, proxy credentials and
+  signed stream URLs are not included.
 - **Safety**: start is blocked without a fresh valid speed signal at or below
   0.5 km/h. Playback stops if the signal goes stale, speed rises, or the app
   leaves the main page. Parked use only.
@@ -100,6 +109,27 @@ find /var/opt/public/oap -type f -name uplink.json 2>/dev/null
 The app's package must contain `"mguInternet": true` at the top level of its
 installed `package.json`, which the build script copies from `app.json`.
 
+### Collecting logs (0.1.4)
+
+1. Update Video Hub to **0.1.4** and reproduce the problem with the car parked.
+2. Open **Connection → Diagnostics / Logs**. Scan the download QR using the
+   phone connected to the BMW's Wi-Fi Direct network, or scan the original
+   Connection QR, open the phone page and use **Download diagnostic JSON**.
+3. Save the downloaded `mgu-video-hub-diagnostics.json` in Files and attach it
+   to the support conversation. The report includes the current capabilities,
+   Store internet lease state, video renderer, network helper and bounded
+   timestamped events. It does not require a working decoder to collect logs.
+
+Read-only fallback through Phone Terminal:
+
+```sh
+find /var/opt/public/oap -type f -name video-hub-diagnostics.json 2>/dev/null
+```
+
+The JSON log is kept in the app's own data directory (max 350 events and
+160 KiB). Download uses the existing random phone pairing token and the
+existing firewall helper on TCP 18879; no new external port is opened.
+
 This is a functional app codebase with an unverified HU-dependent decoder and
 audio path. No BMW proprietary SDK, copyrighted videos or ffmpeg binary are
 included. The MGU Store must build it with the locally extracted `oap-sdk`.
@@ -149,6 +179,7 @@ the local Video Hub HTTP service is listening. Do not publish your QR token.
 node tests/video_hub.test.js
 node tests/video_hub_network.test.js
 node tests/video_hub_uplink.test.js
+node tests/video_hub_diagnostics.test.js
 python3 -c "import json,sys;sys.path.insert(0,'kit/tools');from build import build_ui;build_ui(json.load(open('apps/mgu_video_hub/app.json')))"
 ```
 

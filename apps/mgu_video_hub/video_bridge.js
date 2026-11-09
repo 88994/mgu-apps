@@ -74,6 +74,7 @@ class VideoBridge {
         this.resolver = opts.resolver === undefined ? executable(process.env.MGU_YTDLP || 'yt-dlp') : opts.resolver;
         this.proxyProvider = opts.proxyProvider || (() => null);
         this.mediaProxyProvider = opts.mediaProxyProvider || (() => null);
+        this.onEvent = opts.onEvent || (() => {});
         this.path = '/dev/shm/mgu-video-vhub-' + process.pid + '-' + crypto.randomBytes(4).toString('hex');
         this.fd = null;
         this.status = 'Idle'; this.error = '';
@@ -83,6 +84,9 @@ class VideoBridge {
         this.audioFilter = null; this.dspClient = opts.dspClient || null; this.dspRuntime = opts.dspRuntime;
         this.source = null; this.generation = 0; this.frames = 0; this.tail = Buffer.alloc(0);
         this.width = 640; this.height = 360; this.frameSize = 0;
+    }
+    event(level, code, detail) {
+        try { this.onEvent(level, code, detail || ''); } catch (_) {}
     }
     compatible() { return !!this.ffmpeg; }
     _open(w, h) {
@@ -108,6 +112,7 @@ class VideoBridge {
         fs.writeSync(this.fd, b.slice(4), 0, 4, 16);
         this.frames++;
         this.position = this.startedAt + this.frames / FPS;
+        if (this.frames === 1) this.event('INFO', 'decoder.first_frame', this.width + 'x' + this.height);
     }
     _onData(data) {
         if (!this.playing) return;
@@ -125,19 +130,31 @@ class VideoBridge {
         this.position = Math.max(0, Number(seconds) || 0);
         this.error = '';
         this.status = 'Preparing video...';
-        if (!this.ffmpeg) { this.status = 'Decoder unavailable'; this.error = 'ffmpeg is not installed'; return; }
+        this.event('INFO', 'playback.start', 'source=' + source.type + ' seek=' + this.position + 's');
+        if (!this.ffmpeg) {
+            this.status = 'Decoder unavailable'; this.error = 'ffmpeg is not installed';
+            this.event('ERROR', 'decoder.missing', this.error);
+            return;
+        }
         if (source.type === 'youtube') {
             this.status = 'Resolving YouTube stream...';
             const proxyUrl = this.proxyProvider();
             if (!proxyUrl) {
                 this.status = 'Internet unavailable';
                 this.error = 'MGU Store uplink proxy not ready; see Connection';
+                this.event('WARN', 'uplink.unavailable', this.error);
                 return;
             }
+            this.event('INFO', 'youtube.resolve', 'Starting yt-dlp for video ID ' + source.id);
             this.resolving = resolveYoutube(source.id, this.resolver, (err, direct) => {
                 this.resolving = null;
                 if (gen !== this.generation) return;
-                if (err) { this.status = 'YouTube unavailable'; this.error = err.message; return; }
+                if (err) {
+                    this.status = 'YouTube unavailable'; this.error = err.message;
+                    this.event('ERROR', 'youtube.resolve_failed', this.error);
+                    return;
+                }
+                this.event('INFO', 'youtube.resolved', 'HTTPS video stream URL resolved (URL not logged)');
                 this._decode(direct, this.position, width, audio, gen);
             }, proxyUrl);
         } else this._decode(source.path, this.position, width, audio, gen);
@@ -147,10 +164,15 @@ class VideoBridge {
         if (/^https:\/\//i.test(input) && !this.mediaProxyProvider()) {
             this.status = 'Internet unavailable';
             this.error = 'MGU Store video-stream proxy not ready';
+            this.event('ERROR', 'uplink.stream_unavailable', this.error);
             return;
         }
         const w = width === 960 ? 960 : 640, h = w * 9 / 16;
-        try { this._open(w, h); } catch (e) { this.status = 'Frame buffer failed'; this.error = e.message; return; }
+        try { this._open(w, h); } catch (e) {
+            this.status = 'Frame buffer failed'; this.error = e.message;
+            this.event('ERROR', 'decoder.framebuffer', this.error);
+            return;
+        }
         this.frames = 0; this.startedAt = seconds; this.tail = Buffer.alloc(0);
         const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-re'];
         if (seconds) args.push('-ss', String(seconds));
@@ -159,23 +181,37 @@ class VideoBridge {
             '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1');
         let err = '';
         try { this.child = cp.spawn(this.ffmpeg, args, {stdio: ['ignore', 'pipe', 'pipe']}); }
-        catch (e) { this.status = 'Decoder failed'; this.error = e.message; this._closeFile(); return; }
+        catch (e) {
+            this.status = 'Decoder failed'; this.error = e.message; this._closeFile();
+            this.event('ERROR', 'decoder.spawn_failed', this.error);
+            return;
+        }
         const child = this.child;
         this.playing = true; this.paused = false; this.status = 'Playing';
+        this.event('INFO', 'decoder.started', 'output=' + w + 'x' + h + ' fps=' + FPS + ' audio=' + audio);
         child.stdout.on('data', b => { if (gen === this.generation) this._onData(b); });
         child.stderr.on('data', b => { if (err.length < 1200) err += b.toString('utf8'); });
-        child.on('error', e => { if (gen === this.generation) { this.error = e.message; this.status = 'Decoder error'; } });
+        child.on('error', e => { if (gen === this.generation) {
+            this.error = e.message; this.status = 'Decoder error';
+            this.event('ERROR', 'decoder.error', this.error);
+        } });
         child.on('close', code => {
             if (gen !== this.generation || this.child !== child) return;
             this.child = null; this.playing = false; this.paused = false;
             this._stopAudio();
             this.status = code === 0 && this.frames ? 'Finished' : 'Decoder stopped';
             if (code !== 0 && !this.error) this.error = err.trim().slice(0, 180) || 'ffmpeg exited ' + code;
+            this.event(code === 0 && this.frames ? 'INFO' : 'ERROR', 'decoder.exited',
+                'code=' + code + ' frames=' + this.frames + (this.error ? ' error=' + this.error : ''));
         });
         if (audio === 'alsa') this._startAudio(input, seconds);
     }
     _startAudio(input, seconds) {
-        if (!this.aplay) { this.error = 'aplay missing; playback is silent'; return; }
+        if (!this.aplay) {
+            this.error = 'aplay missing; playback is silent';
+            this.event('WARN', 'audio.missing', this.error);
+            return;
+        }
         const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-re'];
         if (seconds) args.push('-ss', String(seconds));
         if (/^https:\/\//i.test(input) && this.mediaProxyProvider()) args.push('-http_proxy', this.mediaProxyProvider());
@@ -185,13 +221,28 @@ class VideoBridge {
             this.audioOut = cp.spawn(this.aplay, ['-q', '-f', 'S16_LE', '-c', '2', '-r', '44100'], {stdio: ['pipe', 'ignore', 'ignore']});
             const Dsp = this.dspClient || require('./kit/dsp-client');
             this.audioFilter = new Dsp.PcmFilter({ sampleRate: 44100, channels: 2, source: 'mgu_video_hub', runtime: this.dspRuntime,
-                onFallback: (why) => { this.log.warn('Video Hub: DSP bypass: ' + why); } });
+                onFallback: (why) => {
+                    this.log.warn('Video Hub: DSP bypass: ' + why);
+                    this.event('WARN', 'audio.dsp_bypass', why);
+                } });
             this.audioDec.stdout.pipe(this.audioFilter).pipe(this.audioOut.stdin);
-            this.audioOut.stdin.on('error', e => { this.error = 'Audio output: ' + e.message; });
-            this.audioFilter.on('error', e => { this.error = 'Audio EQ: ' + e.message; this._stopAudio(); });
-            this.audioDec.on('error', e => { this.error = 'Audio decoder: ' + e.message; });
-            this.audioOut.on('error', e => { this.error = 'Audio output: ' + e.message; });
-        } catch (e) { this.error = 'Audio unavailable: ' + e.message; this._stopAudio(); }
+            this.audioOut.stdin.on('error', e => {
+                this.error = 'Audio output: ' + e.message; this.event('ERROR', 'audio.output_error', this.error);
+            });
+            this.audioFilter.on('error', e => {
+                this.error = 'Audio EQ: ' + e.message;
+                this.event('ERROR', 'audio.filter_error', this.error); this._stopAudio();
+            });
+            this.audioDec.on('error', e => {
+                this.error = 'Audio decoder: ' + e.message; this.event('ERROR', 'audio.decoder_error', this.error);
+            });
+            this.audioOut.on('error', e => {
+                this.error = 'Audio output: ' + e.message; this.event('ERROR', 'audio.output_error', this.error);
+            });
+        } catch (e) {
+            this.error = 'Audio unavailable: ' + e.message;
+            this.event('ERROR', 'audio.start_failed', this.error); this._stopAudio();
+        }
     }
     pause() {
         if (!this.child) return;
@@ -201,7 +252,8 @@ class VideoBridge {
             [this.audioDec, this.audioOut].forEach(p => { if (p) try { p.kill(signal); } catch (_) {} });
             this.paused = !this.paused;
             this.status = this.paused ? 'Paused' : 'Playing';
-        } catch (e) { this.error = e.message; }
+            this.event('INFO', this.paused ? 'playback.paused' : 'playback.resumed', '');
+        } catch (e) { this.error = e.message; this.event('ERROR', 'playback.pause_failed', this.error); }
     }
     seek(delta, width, audio) {
         if (!this.source) return;
@@ -213,6 +265,7 @@ class VideoBridge {
         if (this.audioOut) { try { this.audioOut.kill('SIGCONT'); this.audioOut.kill('SIGKILL'); } catch (_) {} this.audioOut = null; }
     }
     stop() {
+        const wasActive = !!(this.playing || this.resolving || this.child);
         this.generation++;
         if (this.resolving) { try { this.resolving.kill('SIGKILL'); } catch (_) {} this.resolving = null; }
         if (this.child) { try { this.child.kill('SIGCONT'); this.child.kill('SIGKILL'); } catch (_) {} this.child = null; }
@@ -220,6 +273,7 @@ class VideoBridge {
         this._closeFile();
         this.playing = false; this.paused = false;
         this.status = 'Stopped'; this.tail = Buffer.alloc(0);
+        if (wasActive) this.event('INFO', 'playback.stopped', 'frames=' + this.frames);
     }
     dispose() { this.stop(); }
 }

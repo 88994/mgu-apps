@@ -10,7 +10,7 @@ app = json.loads((ROOT / 'apps/equalizer/app.json').read_text())
 tool = json.loads((ROOT / 'native/equalizer-dsp/component.json').read_text())
 assert app['version'] == tool['version'] == entries['equalizer']['version'] == '0.2.0'
 assert entries['equalizer']['requires']['mgu-equalizer-dsp'] == tool['version']
-assert entries['mgu_video_hub']['version'] == '0.1.3'
+assert entries['mgu_video_hub']['version'] == '0.1.4'
 assert entries['mgu_video_hub']['requires']['mgu-equalizer-dsp'] == '0.2.0'
 for f in tool['files']:
     assert (ROOT / 'native/equalizer-dsp' / f['path']).is_file(), f

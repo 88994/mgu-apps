@@ -55,7 +55,7 @@ function req(method, port, target, body, headers) {
             headers:headers || {}}, res => {
             let s = '';
             res.on('data', b => {s += b;});
-            res.on('end', () => resolve({code:res.statusCode, data:s}));
+            res.on('end', () => resolve({code:res.statusCode, data:s, headers:res.headers}));
         });
         r.on('error', reject);
         r.end(body);
@@ -63,7 +63,9 @@ function req(method, port, target, body, headers) {
 }
 async function checkCompanion(dir) {
     const added = [];
-    const c = new Companion(dir, {youtube:id => added.push(id), fileCount:() => 0, linkCount:() => added.length});
+    const c = new Companion(dir, {youtube:id => added.push(id), fileCount:() => 0,
+        linkCount:() => added.length, logCount:() => 2,
+        diagnostics:() => ({schema:1, events:[{event:'app.started'}]})});
     c.start();
     await new Promise(resolve => c.http.once('listening', resolve));
     assert.strictEqual(c.listening, true, 'QR must not become ready before HTTP listen succeeds');
@@ -74,6 +76,14 @@ async function checkCompanion(dir) {
     r = await req('GET', port, '/status?t=wrong');
     assert.strictEqual(r.code, 403);
     const token = c.token;
+    r = await req('GET', port, '/diagnostics.json?t=wrong');
+    assert.strictEqual(r.code, 403, 'Diagnostic download requires pairing token');
+    r = await req('GET', port, '/diagnostics.json?t=' + token);
+    assert.strictEqual(r.code, 200);
+    assert.strictEqual(JSON.parse(r.data).events[0].event, 'app.started');
+    assert.ok(r.headers['content-disposition'].includes('attachment'));
+    r = await req('GET', port, '/status?t=' + token);
+    assert.strictEqual(JSON.parse(r.data).logs, 2);
     r = await req('POST', port, '/youtube?t='+token,
         JSON.stringify({url:'https://youtu.be/dQw4w9WgXcQ'}), {'content-type':'application/json'});
     assert.strictEqual(r.code, 201);

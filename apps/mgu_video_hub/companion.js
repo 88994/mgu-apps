@@ -42,6 +42,9 @@ class Companion {
         this.inflightBytes = 0;
     }
     link() { return this.host ? 'http://' + this.host + ':' + this.port + '/?t=' + this.token : null; }
+    report(event, detail) {
+        try { if (this.events.failure) this.events.failure(event, detail); } catch (_) {}
+    }
     start() {
         if (this.http) return;
         this.http = http.createServer((req, res) => this.handle(req, res));
@@ -71,10 +74,25 @@ class Companion {
         if (u.pathname === '/status' && req.method === 'GET') return reply(res, 200, {
             files: this.events.fileCount ? this.events.fileCount() : 0,
             links: this.events.linkCount ? this.events.linkCount() : 0,
+            logs: this.events.logCount ? this.events.logCount() : 0,
         });
+        if (u.pathname === '/diagnostics.json' && req.method === 'GET') return this.diagnostics(res);
         if (u.pathname === '/youtube' && req.method === 'POST') return this.youtube(req, res);
         if (u.pathname === '/upload' && req.method === 'POST') return this.upload(req, res);
         return reply(res, 404, {error:'Not found'});
+    }
+    diagnostics(res) {
+        if (!this.events.diagnostics) return reply(res, 503, {error:'Diagnostic log unavailable'});
+        try {
+            const data = JSON.stringify(this.events.diagnostics());
+            if (Buffer.byteLength(data, 'utf8') > 256 * 1024)
+                return reply(res, 500, {error:'Diagnostic export exceeds size limit'});
+            res.writeHead(200, {'Content-Type':'application/json; charset=utf-8',
+                'Content-Disposition':'attachment; filename="mgu-video-hub-diagnostics.json"',
+                'X-Content-Type-Options':'nosniff', 'Cache-Control':'no-store',
+                'Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"});
+            res.end(data);
+        } catch (e) { return reply(res, 500, {error:'Unable to export diagnostics'}); }
     }
     youtube(req, res) {
         let raw = '';
@@ -84,11 +102,17 @@ class Companion {
         });
         req.on('end', () => {
             let input;
-            try { input = JSON.parse(raw).url; } catch (_) { return reply(res, 400, {error:'Invalid JSON'}); }
+            try { input = JSON.parse(raw).url; } catch (_) {
+                this.report('phone.youtube_invalid', 'Invalid JSON');
+                return reply(res, 400, {error:'Invalid JSON'});
+            }
             const id = media.youtubeId(input);
-            if (!id) return reply(res, 400, {error:'Expected a YouTube video URL (not a playlist)'});
+            if (!id) {
+                this.report('phone.youtube_invalid', 'Expected a YouTube video URL');
+                return reply(res, 400, {error:'Expected a YouTube video URL (not a playlist)'});
+            }
             try { if (this.events.youtube) this.events.youtube(id); }
-            catch (e) { return reply(res, 500, {error:e.message}); }
+            catch (e) { this.report('phone.youtube_failed', e.message); return reply(res, 500, {error:e.message}); }
             return reply(res, 201, {id});
         });
     }
@@ -97,12 +121,16 @@ class Companion {
         try { name = media.safeName(decodeURIComponent(req.headers['x-filename'] || '')); }
         catch (_) { return reply(res, 400, {error:'Invalid filename'}); }
         const len = Number(req.headers['content-length']);
-        if (!name || !media.isMedia(name) || !Number.isSafeInteger(len) || len < 1 || len > LIMIT)
+        if (!name || !media.isMedia(name) || !Number.isSafeInteger(len) || len < 1 || len > LIMIT) {
+            this.report('phone.upload_rejected', 'Invalid media extension or size');
             return reply(res, 400, {error:'Invalid video or size (max 256 MB)'});
+        }
         const dir = path.join(this.dir, 'videos');
         try { if (!fs.existsSync(dir)) fs.mkdirSync(dir); } catch (e) { return reply(res, 500, {error:e.message}); }
-        if (media.bytesTotal(dir) + this.inflightBytes + len > QUOTA)
+        if (media.bytesTotal(dir) + this.inflightBytes + len > QUOTA) {
+            this.report('phone.upload_rejected', 'Video library quota exceeded');
             return reply(res, 413, {error:'Video library quota exceeded'});
+        }
         this.inflightBytes += len;
         const target = path.join(dir, name);
         let file;
@@ -121,6 +149,7 @@ class Companion {
             done = true;
             this.inflightBytes -= len;
             if (error) {
+                this.report('phone.upload_failed', error.message);
                 file.destroy();
                 if (created) { try { fs.unlinkSync(target); } catch (_) {} }
                 if (!res.headersSent && !res.destroyed) reply(res, error.code === 'EEXIST' ? 409 : 400, {error:error.message});
