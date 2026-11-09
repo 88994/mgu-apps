@@ -234,7 +234,7 @@ function makeBridge(options) {
     function status() {
         closed();
         return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0,
-            addresses: addresses(), port: publicPort, version: '0.1.4',
+            addresses: addresses(), port: publicPort, version: '0.1.5',
             firewall: { ready: firewallReady && !!(sessionToken || pairToken), error: firewallError, interface: 'wlan_bridge' } };
     }
 

@@ -4,9 +4,12 @@ Run temporary shell commands on an already-rooted head unit through a phone brow
 
 ## Installation
 
-Select the **main branch** of `NamelsMissing/mgu-apps` in MGU Store, then install **Phone Terminal** (version 0.1.5) and update its required tool `mgu-phone-bridge` (version 0.1.4). This tool is a systemd service running as root, not a normal OAP app. It uses no SSH private key; it runs commands on the local MGU.
+Select the **main branch** of `NamelsMissing/mgu-apps` in MGU Store, then install **Phone Terminal** (version 0.1.6) and update its required tool `mgu-phone-bridge` (version 0.1.5). This tool is a systemd service running as root, not a normal OAP app. It uses no SSH private key; it runs commands on the local MGU.
 
 Open **Phone Terminal** on the head unit, press **New session**, and scan the QR code with the phone camera. A local website opens where a command can be submitted and stdout/stderr displayed. Use **Revoke access** on iDrive or **Disconnect** on the website when finished.
+
+- **Clear command** clears only the shell input field, leaving the console output intact.
+- **Copy output** copies the complete console history (including content outside the scroll area) to the phone's clipboard. On private HTTP connections where the modern Clipboard API is unavailable, the page uses a synchronous copy fallback; if the browser blocks both methods, it selects the output for manual copying.
 
 ### Downloading a file to the phone
 

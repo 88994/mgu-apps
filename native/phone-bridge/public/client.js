@@ -77,6 +77,55 @@
     document.querySelectorAll('[data-cmd]').forEach((button) => {
         button.addEventListener('click', () => { $('command').value = button.getAttribute('data-cmd'); });
     });
+    $('clear-command').addEventListener('click', () => { $('command').value = ''; });
+    // The MGU uses local HTTP. On iOS, navigator.clipboard may be unavailable
+    // in that insecure context, so first try a synchronous user-gesture copy.
+    function copyWithSelection(text) {
+        const field = document.createElement('textarea');
+        field.value = text;
+        field.readOnly = true;
+        field.style.position = 'fixed';
+        field.style.top = '0';
+        field.style.left = '0';
+        field.style.opacity = '0';
+        field.style.fontSize = '16px';
+        document.body.appendChild(field);
+        let copied = false;
+        try {
+            field.focus();
+            field.select();
+            field.setSelectionRange(0, text.length);
+            copied = document.execCommand('copy');
+        } catch (e) { /* Clipboard access may be blocked by the browser. */ }
+        document.body.removeChild(field);
+        return copied;
+    }
+    function manualOutputSelection() {
+        const selection = window.getSelection && window.getSelection();
+        if (selection && document.createRange) {
+            const range = document.createRange();
+            range.selectNodeContents($('output'));
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+        $('copy-status').textContent = 'Automatic copy blocked. Output selected — use Copy in the browser.';
+    }
+    $('copy-output').addEventListener('click', () => {
+        const outputText = $('output').textContent;
+        if (!outputText) {
+            $('copy-status').textContent = 'There is no output to copy.';
+            return;
+        }
+        if (copyWithSelection(outputText)) {
+            $('copy-status').textContent = 'Complete output copied to clipboard.';
+        } else if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(outputText).then(() => {
+                $('copy-status').textContent = 'Complete output copied to clipboard.';
+            }, manualOutputSelection);
+        } else {
+            manualOutputSelection();
+        }
+    });
     $('clear').addEventListener('click', () => { $('output').textContent = 'Output cleared.'; });
     $('example-file').addEventListener('click', () => { $('file-path').value = '/tmp/carplay-audio-analysis.tgz'; });
     $('prepare-file').addEventListener('click', async () => {

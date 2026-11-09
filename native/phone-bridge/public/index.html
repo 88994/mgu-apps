@@ -28,12 +28,13 @@
         <button type="button" data-cmd="df -h">df -h</button>
         <button type="button" data-cmd="ip -4 addr">IP addresses</button>
       </div>
-      <label for="command">Shell command</label>
+      <div class="field-heading"><label for="command">Shell command</label><button id="clear-command" type="button" class="text-button">Clear command</button></div>
       <textarea id="command" rows="3" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="e.g. ls -la /var/opt/public/oap"></textarea>
       <div class="actions"><span id="hint">Commands execute as root.</span><button id="run">Run command</button></div>
-      <label for="output">Output</label>
+      <div class="field-heading"><label for="output">Output</label><button id="copy-output" type="button" class="text-button">Copy output</button></div>
       <pre id="output" role="log" aria-live="polite">Ready.</pre>
-      <div class="footer"><span id="expiry"></span><button id="clear" class="text-button">Clear output</button></div>
+      <p id="copy-status" role="status" aria-live="polite"></p>
+      <div class="footer"><span id="expiry"></span><button id="clear" type="button" class="text-button">Clear output</button></div>
       <div class="file-transfer">
         <h2>Download a file from the MGU</h2>
         <p>Enter the absolute path of a file on the head unit. For a directory, create a .tgz archive in the terminal first. Maximum file size: 256 MiB.</p>
