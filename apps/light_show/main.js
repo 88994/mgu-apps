@@ -8,12 +8,20 @@ const Guard = require('./guard');
 const Journal = require('./journal');
 const Engine = require('./engine');
 const Preview = require('./preview');
+const DiagnosticOutputs = require('./diagnostic-outputs');
 
 mgu.run({
     async start(ctx) {
         const { ui, settings, log } = ctx;
         const journal = new Journal(ctx.dataDir);
         let engine, link, guard, preview = null, lastStatus = '', hiddenTimer = null, lastRoute = null;
+        let selectedOutput = null, lastObservation = '';
+        const observationsPath = path.join(ctx.dataDir, 'light-show-observations.json');
+        let observations = [];
+        try {
+            const saved = JSON.parse(fs.readFileSync(observationsPath, 'utf8'));
+            if (Array.isArray(saved)) observations = saved.filter((x) => x && typeof x === 'object').slice(-100);
+        } catch (e) { if (e.code !== 'ENOENT') log.warn('Light Show observation load: ' + e.message); }
         const config = () => P.settings((k) => settings.get(k));
         const refresh = () => {
             if (!engine) return;
@@ -28,6 +36,10 @@ mgu.run({
             const line = text + (s.state === 'RUNNING' ? ' (' + s.remainingSeconds + ' s)' : '');
             if (line !== lastStatus) { lastStatus = line; ui.text('STATUS', line); }
             if (ui.isVisible('DIAGNOSTICS')) ui.text('DIAG_TEXT', diagnostics());
+            if (selectedOutput && ui.isVisible('OUTPUT_OBSERVE')) {
+                ui.text('OBSERVE_STATUS', line + '\nBDC replies are NOT physical lamp measurements.');
+                ui.text('OBSERVE_RECORDED', lastObservation || 'Record the observed light and sound after the test.');
+            }
         };
         const changed = () => {
             if (engine && engine.run && ['STARTING', 'RUNNING'].indexOf(engine.state) >= 0) {
@@ -43,7 +55,7 @@ mgu.run({
         function diagnostics() {
             const s = engine.status(), g = guard.snapshot();
             return [
-                'Light Show 0.2.1 - EXPERIMENTAL / physical effect not verified',
+                'Light Show 0.2.2 - EXPERIMENTAL / individual output tests unverified',
                 'State: ' + s.state + ' - ' + s.note,
                 'TASU: ' + (link.available ? 'available' : 'unavailable'),
                 'BDC address: 40 | SGBD: ' + (link.index || 'not read') + ' | required: ' + P.INDEX,
@@ -51,7 +63,8 @@ mgu.run({
                 'Selector: ' + (g.stage || 'unknown') + ' | ' + (g.blockedBy || 'P and stationary'),
                 'Acknowledged commands (not proof of light): ' + s.sent + ' | measured step: ' + s.stepMs + ' ms',
                 'Legacy IO return response: ' + (s.releaseConfirmed ? 'confirmed' : 'not confirmed this run'),
-                'Stop command: ' + (s.stopConfirmed ? 'acknowledged' : 'not acknowledged') + ' | route: ' + s.control.route,
+                'Stop command: ' + (s.stopConfirmed ? 'acknowledged' : 'not acknowledged') + ' | route: ' + s.control.route
+                    + (s.control.outputId == null ? '' : ' | single output 0x' + s.control.outputId.toString(16).toUpperCase()),
                 'Recovery marker: ' + (journal.pending() ? 'PENDING - STOP or checked-light recovery' : 'clear'),
                 'A positive diagnostic response is not a measured lamp state.',
                 'Original start/show error: ' + (engine.originalFault || 'none recorded'),
@@ -61,14 +74,18 @@ mgu.run({
             ]).concat(engine.headlamps.map((x) => x.side + ' [' + P.hex([x.address]) + '] ' + (x.name || 'module')
                 + ' | SGBD ' + (x.index || 'unknown') + '\nHigh-beam mapping: ' + (x.highBeamRaw || 'unavailable')
                 + '\n' + (x.error || x.note || ''))).concat([
+                '', 'Individual light observations (latest first):',
+            ]).concat(observations.slice(-30).reverse().map((o) => o.at + ' ' + o.prg + ': ' + o.result
+                + ' | ECU: ' + o.ecuState + ' | ' + o.ecuNote)).concat([
                 '', 'Recent diagnostic requests:',
             ]).concat(link.trace.slice(-14).map((r) => r.at.slice(11, 23) + ' [' + P.hex([r.address]) + '] > ' + r.tx + ' < ' + (r.rx || r.error || 'waiting'))).join('\n');
         }
         function saveLog() {
             try {
-                const report = { app: 'light_show', version: '0.2.1', at: new Date().toISOString(),
+                const report = { app: 'light_show', version: '0.2.2', at: new Date().toISOString(),
                     physicalEffectVerified: false, headlamps: engine.headlamps, status: engine.status(), guard: guard.snapshot(),
-                    settings: config(), bdcIndex: link.index, recoveryPending: journal.pending(), originalFault: engine.originalFault, outputSamples: engine.outputSamples, trace: link.trace };
+                    settings: config(), bdcIndex: link.index, recoveryPending: journal.pending(), originalFault: engine.originalFault,
+                    individualObservations: observations, outputSamples: engine.outputSamples, trace: link.trace };
                 const file = path.join(ctx.dataDir, 'light-show-diagnostics.json');
                 fs.writeFileSync(file + '.tmp', JSON.stringify(report, null, 2)); fs.renameSync(file + '.tmp', file);
                 ui.text('DIAG_TEXT', diagnostics() + '\n\nSaved: ' + file);
@@ -86,6 +103,50 @@ mgu.run({
         ui.onClick('BTN_DIAG', () => { ui.text('DIAG_TEXT', diagnostics()); return ui.open('DIAGNOSTICS'); });
         ui.onClick('BTN_EXPORT', saveLog);
         ui.onClick('BTN_HEADLAMPS', async () => { await engine.inspectHeadlamps(); ui.text('DIAG_TEXT', diagnostics()); });
+        ui.onClick('BTN_OUTPUTS', () => ui.open('OUTPUT_INDEX'));
+        ui.onClick('BTN_OUTPUT_INDEX_BACK', () => ui.open('DIAGNOSTICS'));
+        DiagnosticOutputs.GROUPS.forEach((group, i) => {
+            ui.onClick(group.button, () => ui.open(group.screen));
+            ui.onClick('BTN_OUTPUT_GROUP_BACK_' + (i + 1), () => ui.open('OUTPUT_INDEX'));
+            for (const [id] of group.lights) {
+                ui.onClick(DiagnosticOutputs.buttonId(id), async () => {
+                    if (engine.run) return;
+                    selectedOutput = DiagnosticOutputs.get(id);
+                    lastObservation = '';
+                    ui.text('OBSERVE_NAME', selectedOutput.label + '\nBDC_G05: ' + selectedOutput.prg
+                        + ' (0x' + id.toString(16).toUpperCase() + ')');
+                    await ui.open('OUTPUT_OBSERVE');
+                    await engine.testOutput(id);
+                    refresh();
+                });
+            }
+        });
+        ui.onClick('BTN_OUTPUT_STOP', () => engine.stop('Stopped individual light test'));
+        ui.onClick('BTN_OUTPUT_REPEAT', () => selectedOutput && engine.testOutput(selectedOutput.id));
+        ui.onClick('BTN_OUTPUT_BACK', async () => {
+            await engine.stop('Leaving individual light test');
+            return ui.open(selectedOutput ? selectedOutput.group : 'OUTPUT_INDEX');
+        });
+        function observe(result) {
+            if (!selectedOutput) return;
+            if (engine.run) { lastObservation = 'Wait until STOP has finished before recording.'; refresh(); return; }
+            const status = engine.status();
+            const record = { at: new Date().toISOString(), id: selectedOutput.id,
+                prg: selectedOutput.prg, label: selectedOutput.label, result,
+                ecuState: status.state, ecuNote: status.note, cleanupConfirmed: status.stopConfirmed };
+            observations.push(record); observations = observations.slice(-100);
+            try {
+                fs.writeFileSync(observationsPath + '.tmp', JSON.stringify(observations, null, 2));
+                fs.renameSync(observationsPath + '.tmp', observationsPath);
+                lastObservation = 'Saved: ' + result + ' (will be in diagnostic export)';
+            } catch (e) { lastObservation = 'Observation kept in memory; save failed: ' + e.message; }
+            refresh();
+        }
+        [['BTN_OUTPUT_VISIBLE', 'visible, no unusual noise'],
+            ['BTN_OUTPUT_VISIBLE_NOISE', 'visible and unusual noise'],
+            ['BTN_OUTPUT_NO_EFFECT', 'no visible effect, no noise'],
+            ['BTN_OUTPUT_NOISE', 'unusual noise without visible light']]
+            .forEach(([button, result]) => ui.onClick(button, () => observe(result)));
         ui.onClick('BTN_CLEAR_LOCK', () => ui.open('CONFIRM_LIGHTS'));
         ui.onClick('BTN_CANCEL_CLEAR', () => ui.open('DIAGNOSTICS'));
         ui.onClick('BTN_CONFIRM_CLEAR', async () => {
@@ -111,7 +172,9 @@ mgu.run({
         ui.onVisible(() => {
             clearTimeout(hiddenTimer);
             hiddenTimer = setTimeout(() => {
-                if (!['MAIN', 'PREVIEW', 'DIAGNOSTICS', 'CONFIRM_LIGHTS'].some((n) => ui.isVisible(n))) {
+                if (!['MAIN', 'PREVIEW', 'DIAGNOSTICS', 'CONFIRM_LIGHTS', 'OUTPUT_INDEX',
+                    'OUTPUT_OBSERVE'].concat(DiagnosticOutputs.GROUPS.map((g) => g.screen))
+                    .some((n) => ui.isVisible(n))) {
                     preview = null; if (engine.run) engine.stop('App closed');
                 }
             }, 250);

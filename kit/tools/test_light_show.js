@@ -11,6 +11,7 @@ const P = require(path.join(app, 'protocol'));
 const Guard = require(path.join(app, 'guard'));
 const Journal = require(path.join(app, 'journal'));
 const Engine = require(path.join(app, 'engine'));
+const DiagnosticOutputs = require(path.join(app, 'diagnostic-outputs'));
 // Test the transport as packaged, including the project's actual TASU frame
 // decoder and reply correlator (build.py light_show before running this file).
 const Link = require(path.join(root, 'dist', 'light_show', 'source', 'javascript', 'link'));
@@ -59,7 +60,7 @@ test('All 16 lamp commands and OEM release match the original PRG bytecode', () 
     assert.deepStrictEqual(P.release(), [0xE3, 0xB5, 0, 0xFF]);
 });
 test('Unsupported light outputs and corrupt persisted settings are rejected', () => {
-    [0xFE, 0x18, -1, 999].forEach((v) => assert.throws(() => P.control(v, 1)));
+    [0xFE, 0x24, -1, 999].forEach((v) => assert.throws(() => P.control(v, 1)));
     assert.throws(() => P.control(7, 2));
     assert.throws(() => P.settings((k) => ({ pattern: 'double', lights: 'high', tempo: 1, duration: 5 })[k]));
 });
@@ -371,6 +372,82 @@ test('Headlamp inspection is blocked while moving and preserves a pending recove
     await r.engine.inspectHeadlamps(); assert.strictEqual(r.engine.headlamps.length, 2);
     assert.strictEqual(r.journal.pending(), true); assert.strictEqual(r.engine.state, 'BLOCKED');
     assert.deepStrictEqual(r.calls, []);
+});
+
+test('All 32 exterior BDC outputs are listed once, excluding unrestricted and cabin outputs', () => {
+    const all = DiagnosticOutputs.GROUPS.flatMap((g) => g.lights);
+    assert.strictEqual(all.length, 32);
+    assert.strictEqual(new Set(all.map((x) => x[0])).size, 32);
+    assert.deepStrictEqual([0x18, 0x19, 0x23].map((id) => DiagnosticOutputs.get(id).prg), ['BL_L', 'BL_R', 'BL_M']);
+    assert.deepStrictEqual([0x0D, 0x10, 0x20].map((id) => DiagnosticOutputs.get(id).prg), ['FRA_V_L', 'FRA_Z_L', 'FRA_H_L']);
+    for (const id of [0xFE, 0x26, 0x27, 0x36, 0x40, 0x00]) {
+        assert.throws(() => DiagnosticOutputs.get(id));
+        assert.throws(() => P.control(id, 1));
+    }
+    for (const [id] of all) assert.deepStrictEqual(P.control(id, 1), [0xE3, 0xB5, 3, id, 1, 0xC0]);
+});
+test('Every single-light UI control maps to one and only one whitelisted BDC output', () => {
+    const spec = require(path.join(app, 'app.json'));
+    const buttons = spec.screens.flatMap((s) => s.items || []).map((x) => x[1]);
+    const singles = buttons.filter((x) => x && x.startsWith('BTN_LAMP_'));
+    assert.strictEqual(singles.length, 32);
+    assert.strictEqual(new Set(singles).size, 32);
+    for (const row of DiagnosticOutputs.GROUPS.flatMap((g) => g.lights)) {
+        assert(singles.includes(DiagnosticOutputs.buttonId(row[0])));
+    }
+});
+test('Single-light test has one 750-ms ON, individual OFF, OEM release, then default session', async () => {
+    for (const id of [0x07, 0x0D, 0x18, 0x19, 0x23, 0x20, 0x22]) {
+        const r = rig(); const began = r.now();
+        await r.engine.testOutput(id);
+        assert.strictEqual(r.now() - began, 750);
+        assert.deepStrictEqual(controls(r), [['set', id, 1], ['set', id, 0]]);
+        assert.deepStrictEqual(r.calls.slice(-4), [['set', id, 0], 'release', 'default', 'clear']);
+        assert.strictEqual(r.journal.pending(), false);
+        assert.strictEqual(r.engine.control.outputId, id);
+    }
+});
+test('Single-light STOP cancels waiting without another ON and still attempts OFF and OEM release', async () => {
+    let stopNow = false; const r = rig({ onSleep: async () => { if (!stopNow) { stopNow = true; r.engine.stop('STOP pressed'); } } });
+    await r.engine.testOutput(0x23);
+    assert.deepStrictEqual(controls(r), [['set', 0x23, 1], ['set', 0x23, 0]]);
+    assert.deepStrictEqual(r.calls.slice(-4), [['set', 0x23, 0], 'release', 'default', 'clear']);
+});
+test('A failed individual OFF or legacy OEM return retains the lock for manual light checking', async () => {
+    const offFailed = rig({ onSet: (id, on) => { if (!on) throw Error('OFF refused'); } });
+    await offFailed.engine.testOutput(0x18);
+    assert.strictEqual(offFailed.journal.pending(), true);
+    assert.strictEqual(offFailed.engine.state, 'ERROR');
+    assert(offFailed.calls.includes('release'));
+    assert(offFailed.calls.includes('default'));
+    const rejectedReturn = rig({ releaseFail: true });
+    await rejectedReturn.engine.testOutput(0x07);
+    assert.deepStrictEqual(controls(rejectedReturn), [['set', 7, 1], ['set', 7, 0]]);
+    assert.strictEqual(rejectedReturn.journal.pending(), true);
+    assert.strictEqual(rejectedReturn.engine.stopConfirmed, false);
+});
+test('Persisted single-output recovery only performs OFF, release and default session', async () => {
+    const r = rig({ pending: true, record: { route: 'single', outputId: 0x23 } });
+    await r.engine.testOutput(0x07); assert.deepStrictEqual(r.calls, []);
+    await r.engine.stop();
+    assert.deepStrictEqual(r.calls, ['identify', ['set', 0x23, 0], 'release', 'default', 'clear']);
+    const corrupted = rig({ pending: true, record: { route: 'single', outputId: 0xFE } });
+    await corrupted.engine.stop();
+    assert.deepStrictEqual(corrupted.calls, ['identify']);
+    assert.strictEqual(corrupted.journal.pending(), true);
+});
+test('Single-output tests are rejected in movement and do not accept arbitrary identifiers', async () => {
+    const r = rig(); r.state.block = 'Vehicle must be stationary';
+    await r.engine.testOutput(0x18); assert.deepStrictEqual(r.calls, []);
+    const b = rig(); await b.engine.testOutput(0xFE);
+    assert.deepStrictEqual(b.calls, []);
+    assert.strictEqual(b.engine.state, 'ERROR');
+});
+test('Real TASU transport serializes third-brake-light control via BDC, not a guessed FLM address', async () => {
+    const r = await tasu((args, emit) => { setImmediate(() => emit(0x40, [0x6F, 0xE3, 0xB5, 0x03])); return 'NO_ERROR'; });
+    await r.link.set(0x23, 1); await r.link.set(0x23, 0);
+    assert(r.requests.every((x) => x.targetAddress === 0x40 && x.serviceID === 0x2F));
+    assert.deepStrictEqual(Array.from(r.requests[0].udsData), [0xE3, 0xB5, 3, 0x23, 1, 0xC0]);
 });
 
 (async () => {

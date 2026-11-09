@@ -1,8 +1,8 @@
 {
   "id": "light_show",
   "title": "Light Show",
-  "description": "Experimental ID7 light controller: timed BMW light functions for both lights together, a bounded 2-second test, BDC readback and explicit stop. Legacy digital-output route retained for diagnostics; no physical effect was observed with it on the reported G21.",
-  "version": "0.2.1",
+  "description": "Experimental ID7 light controller: timed light patterns and individual BDC output diagnostics for 32 exterior channels with short single pulses, observation log and explicit recovery lock.",
+  "version": "0.2.2",
   "vendor": "custom",
   "loggingId": "OAL9",
   "iconGlyph": "LS",
@@ -110,6 +110,11 @@
         ],
         [
           "button",
+          "BTN_OUTPUTS",
+          "Individual light tests / 32 outputs"
+        ],
+        [
+          "button",
           "BTN_CLEAR_LOCK",
           "Normal lights checked - reset saved stop lock"
         ],
@@ -123,6 +128,104 @@
           "DIAG_TEXT",
           "Loading diagnostics..."
         ]
+      ]
+    },
+    {
+      "name": "OUTPUT_INDEX",
+      "kind": "menu",
+      "title": "Diagnostics - individual lamps",
+      "items": [
+        ["text3", "OUTPUT_WARNING", "Stationary in P, on private property. Each output is requested for up to 750 ms, then OFF and OEM release. The legacy output path had no visible effect on the tested G21; a failed release locks further tests until normal lights are checked."],
+        ["button", "BTN_OUTPUT_FRONT", "Front lights / high beam / turn signals"],
+        ["button", "BTN_OUTPUT_SIDE", "Side marker / side indicators"],
+        ["button", "BTN_OUTPUT_REAR", "Tail / brake / 3rd brake lights"],
+        ["button", "BTN_OUTPUT_REAR_EXTRA", "Rear turn / fog / reverse / plate"],
+        ["button", "BTN_OUTPUT_INDEX_BACK", "Back to Diagnostics"]
+      ]
+    },
+    {
+      "name": "OUTPUT_FRONT",
+      "kind": "menu",
+      "title": "Single light - front",
+      "items": [
+        ["text", "OUTPUT_FRONT_NOTE", "Tap one output for a 750-ms test"],
+        ["button", "BTN_LAMP_01", "Low beam left / AL_L"],
+        ["button", "BTN_LAMP_02", "Low beam right / AL_R"],
+        ["button", "BTN_LAMP_03", "Daytime light left / TFL_L"],
+        ["button", "BTN_LAMP_04", "Daytime light right / TFL_R"],
+        ["button", "BTN_LAMP_07", "High beam left / FL_L"],
+        ["button", "BTN_LAMP_08", "High beam right / FL_R"],
+        ["button", "BTN_LAMP_09", "Position light left / POL_L"],
+        ["button", "BTN_LAMP_0A", "Position light right / POL_R"],
+        ["button", "BTN_LAMP_0B", "Front fog left / NSW_L"],
+        ["button", "BTN_LAMP_0C", "Front fog right / NSW_R"],
+        ["button", "BTN_LAMP_0D", "Front indicator left / FRA_V_L"],
+        ["button", "BTN_LAMP_0E", "Front indicator right / FRA_V_R"],
+        ["button", "BTN_OUTPUT_GROUP_BACK_1", "Back to light groups"]
+      ]
+    },
+    {
+      "name": "OUTPUT_SIDE",
+      "kind": "menu",
+      "title": "Single light - side",
+      "items": [
+        ["text", "OUTPUT_SIDE_NOTE", "If not fitted, no visible effect is expected"],
+        ["button", "BTN_LAMP_05", "Side marker left / SML_L"],
+        ["button", "BTN_LAMP_06", "Side marker right / SML_R"],
+        ["button", "BTN_LAMP_10", "Side indicator left / FRA_Z_L"],
+        ["button", "BTN_LAMP_11", "Side indicator right / FRA_Z_R"],
+        ["button", "BTN_OUTPUT_GROUP_BACK_2", "Back to light groups"]
+      ]
+    },
+    {
+      "name": "OUTPUT_REAR",
+      "kind": "menu",
+      "title": "Single light - tail / brake",
+      "items": [
+        ["text", "OUTPUT_REAR_NOTE", "Third brake light is BL_M; BFD is a separate output"],
+        ["button", "BTN_LAMP_14", "Tail light left / SL_L"],
+        ["button", "BTN_LAMP_15", "Tail light right / SL_R"],
+        ["button", "BTN_LAMP_16", "Tail light 2 left / SL_2_L"],
+        ["button", "BTN_LAMP_17", "Tail light 2 right / SL_2_R"],
+        ["button", "BTN_LAMP_18", "Brake light left / BL_L"],
+        ["button", "BTN_LAMP_19", "Brake light right / BL_R"],
+        ["button", "BTN_LAMP_23", "Third brake light / BL_M"],
+        ["button", "BTN_LAMP_1A", "Brake force left / BFD_L"],
+        ["button", "BTN_LAMP_1B", "Brake force right / BFD_R"],
+        ["button", "BTN_OUTPUT_GROUP_BACK_3", "Back to light groups"]
+      ]
+    },
+    {
+      "name": "OUTPUT_REAR_EXTRA",
+      "kind": "menu",
+      "title": "Single light - rear auxiliary",
+      "items": [
+        ["text", "OUTPUT_REAR_EXTRA_NOTE", "Unavailable equipment may not respond"],
+        ["button", "BTN_LAMP_1C", "Rear fog left / NSL_L"],
+        ["button", "BTN_LAMP_1D", "Rear fog right / NSL_R"],
+        ["button", "BTN_LAMP_1E", "Reverse left / RFS_L"],
+        ["button", "BTN_LAMP_1F", "Reverse right / RFS_R"],
+        ["button", "BTN_LAMP_20", "Rear indicator left / FRA_H_L"],
+        ["button", "BTN_LAMP_21", "Rear indicator right / FRA_H_R"],
+        ["button", "BTN_LAMP_22", "Number plate / KZL"],
+        ["button", "BTN_OUTPUT_GROUP_BACK_4", "Back to light groups"]
+      ]
+    },
+    {
+      "name": "OUTPUT_OBSERVE",
+      "kind": "menu",
+      "title": "Single light - observe result",
+      "items": [
+        ["text3", "OBSERVE_NAME", "Individual output test"],
+        ["text3", "OBSERVE_STATUS", "Test result pending"],
+        ["button", "BTN_OUTPUT_STOP", "STOP / return lights to vehicle"],
+        ["button", "BTN_OUTPUT_REPEAT", "Repeat same 750-ms test"],
+        ["button", "BTN_OUTPUT_VISIBLE", "Record: visible, no unusual noise"],
+        ["button", "BTN_OUTPUT_VISIBLE_NOISE", "Record: visible + unusual noise"],
+        ["button", "BTN_OUTPUT_NO_EFFECT", "Record: no visible effect, no noise"],
+        ["button", "BTN_OUTPUT_NOISE", "Record: noise, no visible light"],
+        ["text", "OBSERVE_RECORDED", "Record your observation after the test finishes"],
+        ["button", "BTN_OUTPUT_BACK", "Back to selected light group"]
       ]
     },
     {

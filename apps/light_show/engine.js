@@ -1,6 +1,7 @@
 'use strict';
 const P = require('./protocol');
 const Headlamps = require('./headlamps');
+const DiagnosticOutputs = require('./diagnostic-outputs');
 
 // One serialized conversation. Stop sets the cancellation flag immediately;
 // a possibly accepted in-flight command must finish before stop is sent.
@@ -13,7 +14,7 @@ class Engine {
         this.state = 'IDLE'; this.note = 'Ready'; this.mask = [0, 0];
         this.sent = 0; this.stepMs = 0; this.run = null; this.cancel = false;
         this.releaseConfirmed = false; this.stopRequested = false; this.outputSamples = []; this.originalFault = null;
-        this.control = { route: 'digital', lights: null }; this.stopConfirmed = false; this.headlamps = [];
+        this.control = { route: 'digital', lights: null, outputId: null }; this.stopConfirmed = false; this.headlamps = [];
     }
     status() {
         return { state: this.state, note: this.note, mask: this.mask.slice(), sent: this.sent,
@@ -27,7 +28,8 @@ class Engine {
         if (!read) return;
         try {
             const reply = await read.call(this.link);
-            this.outputSamples.push({ label, reply: P.hex(reply), summary: P.statusSummary(reply, this.control.lights) });
+            this.outputSamples.push({ label, reply: P.hex(reply), summary: this.control.route === 'single'
+                ? P.singleOutputSummary(reply, this.control.outputId) : P.statusSummary(reply, this.control.lights) });
         }
         catch (e) { this.outputSamples.push({ label, error: String(e.message || e) }); }
         this.changed();
@@ -85,13 +87,20 @@ class Engine {
         catch (e) { this.update('ERROR', e.message); return Promise.resolve(); }
         return this._start({ route: 'timed', pattern: 'test', lights, tempo: 2000, seconds: 2, test: true });
     }
+    testOutput(id) {
+        try { DiagnosticOutputs.get(id); }
+        catch (e) { this.update('ERROR', e.message); return Promise.resolve(); }
+        // One short pulse. There is no continuous ON or adjustable duration.
+        return this._start({ route: 'single', outputId: id, seconds: 1, tempo: 750 });
+    }
     _start(config) {
         const reason = this.guard.reason();
         if (this.run) return this.run;
         if (reason) { this.update('BLOCKED', reason); return Promise.resolve(); }
         if (this.journal.pending()) { this.update('ERROR', 'Saved stop lock pending - use STOP or Diagnostics'); return Promise.resolve(); }
         this.cancel = false; this.stopRequested = false; this.stopReason = null; this.releaseConfirmed = false;
-        this.stopConfirmed = false; this.control = { route: config.route || 'digital', lights: config.lights };
+        this.stopConfirmed = false; this.control = { route: config.route || 'digital',
+            lights: config.lights || null, outputId: config.route === 'single' ? config.outputId : null };
         this.sent = 0; this.stepMs = 0; this.mask = [0, 0]; this.outputSamples = []; this.originalFault = null;
         this.update('STARTING', 'Checking BDC_G05');
         let resolve;
@@ -120,6 +129,7 @@ class Engine {
             let afterSampled = false;
             if (!this.allowed()) return;
             if (c.route === 'timed') { await this._timedLoop(c); return; }
+            if (c.route === 'single') { await this._singlePulse(c); return; }
             const pair = P.PAIRS[c.lights], pattern = P.PATTERNS[c.pattern].steps;
             const outputs = [pair.left, pair.right];
             let previous = [null, null], step = 0, keepAt = this.now(), lastStep = null;
@@ -157,6 +167,18 @@ class Engine {
             } else this.update(fault ? 'ERROR' : 'IDLE', fault || this.stopReason || 'Stopped before lamp control');
             this.stopReason = null;
         }
+    }
+    async _singlePulse(c) {
+        const output = DiagnosticOutputs.get(c.outputId);
+        if (!this.allowed()) return;
+        this.deadline = this.now() + c.tempo;
+        this.update('RUNNING', 'Single light: ' + output.label + ' / ' + output.prg);
+        await this.link.set(output.id, 1); this.sent++;
+        // Deliberately no readback while ON: diagnostic reads could delay OFF.
+        for (let elapsed = 0; elapsed < c.tempo && this.allowed(); elapsed += 25) {
+            await this.sleep(Math.min(25, c.tempo - elapsed));
+        }
+        // The finally path always attempts OFF, OEM release and default session.
     }
     async _timedLoop(c) {
         const pat = P.pattern(c), fn = P.FUNCTIONS[c.lights];
@@ -202,9 +224,11 @@ class Engine {
             await this.link.identify();
             const saved = this.journal.value;
             if (saved) {
-                if (saved.corrupted || (saved.route && ['timed', 'digital'].indexOf(saved.route) < 0)) throw new Error('Invalid recovery record; check normal lights first');
+                if (saved.corrupted || (saved.route && ['timed', 'digital', 'single'].indexOf(saved.route) < 0)) throw new Error('Invalid recovery record; check normal lights first');
                 if (saved.route === 'timed') P.timedControl(saved.lights, 0);
-                this.control = { route: saved.route || 'digital', lights: saved.lights || null };
+                if (saved.route === 'single') DiagnosticOutputs.get(saved.outputId);
+                this.control = { route: saved.route || 'digital', lights: saved.lights || null,
+                    outputId: saved.route === 'single' ? saved.outputId : null };
             }
             if (await this._release()) this.update('IDLE', this.control.route === 'timed' ? 'Timed stop acknowledged' : 'OEM IO return acknowledged');
         } catch (e) { this.update('ERROR', 'Saved stop lock pending: ' + String(e.message || e)); }
@@ -214,14 +238,18 @@ class Engine {
         let error = null, released = false;
         // Always attempt the session return even if the stop request times out. A positive
         // session reply alone is not presented as proof of physical lamp state.
+        if (this.control.route === 'single') {
+            try { await this.link.set(this.control.outputId, 0); }
+            catch (e) { error = 'Individual OFF: ' + (e.message || String(e)); }
+        }
         try {
             if (this.control.route === 'timed') await this.link.timed(this.control.lights, 0);
             else await this.link.release();
             released = true;
-        } catch (e) { error = e.message || String(e); }
+        } catch (e) { error = error || e.message || String(e); }
         try { await this.link.defaultSession(); } catch (e) { error = error || e.message || String(e); }
-        this.mask = [0, 0]; this.stopConfirmed = released;
-        this.releaseConfirmed = this.control.route === 'digital' && released;
+        this.mask = [0, 0]; this.stopConfirmed = released && !error;
+        this.releaseConfirmed = this.control.route !== 'timed' && released;
         if (!error && released) {
             try { this.journal.clear(); } catch (e) { error = 'Could not clear recovery marker: ' + e.message; }
         }

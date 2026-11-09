@@ -1,8 +1,46 @@
-# Light Show 0.2.1
+# Light Show 0.2.2
 
 Experimentelle Stroboskop-App für BMW MGU iDrive 7, angelehnt an
 [das Reel von bmwneva](https://www.instagram.com/reel/DfR0l0HxKNS/).
 Eigenständige Implementierung, kein Originalcode aus dem Reel.
+
+## 0.2.2: Jede Außenleuchte einzeln testen
+
+Unter **Diagnostics → Individual light tests / 32 outputs** gibt es vier
+Untergruppen für Front, Seite, Heck/Bremslicht und die hinteren Zusatzleuchten.
+Die 32 einzeln auswählbaren BDC-Ausgänge stammen aus der Tabelle
+`TAB_LICHT_AUSGANG_DIGITAL_ARG` in der vom Nutzer bereitgestellten
+`BDC_G05.prg` (Revision 36.001). Dazu gehören:
+
+- Fernlicht und Abblendlicht jeweils links/rechts;
+- Tagfahrlicht, Positionslicht und Nebelscheinwerfer links/rechts;
+- Blinker vorn, seitlich und hinten jeweils links/rechts;
+- Schlusslichtkreise links/rechts, Bremslicht links/rechts sowie **die dritte
+  Bremsleuchte `BL_M` (ID `0x23`)**;
+- Bremskraftanzeige-Ausgänge `BFD_L` und `BFD_R`, Rückfahrlicht,
+  Nebelschlusslicht und Kennzeichenbeleuchtung.
+
+Jeder Test fordert genau **einen** diskreten BDC-Ausgang für **750 ms** an.
+Danach werden explizit der Einzel-Ausgang OFF, die allgemeine IO-Rückgabe und
+die Standardsitzung versucht. Es erfolgt keine Stellmotor-Ansteuerung durch die
+App, allerdings lässt sich nicht ausschließen, dass die Steuergeräte auf
+einen Lichtauftrag mit eigenen Stellbewegungen reagieren.
+
+**Wichtig:** Das ist derselbe alte `E3B5`-Ausgangsweg, bei dem am getesteten G21
+in Version 0.1.1 kein sichtbares Fernlicht beobachtet wurde. Die zusätzlichen
+Ausgangskennungen sind aus der PRG-Tabelle belegt; ihre einzelnen Steuertelegramme
+und physische Wirkung wurden noch nicht gegen das Fahrzeug verifiziert. Manche
+Ausgänge können im G21 fehlen oder vom jeweiligen Steuergerät anders zugeordnet
+werden. Es werden **keine** unbekannten FLM-LED-Kanäle oder Stellmotoren angesteuert.
+
+Nach jeder Prüfung kann das Ergebnis direkt erfasst werden:
+"visible, no unusual noise", "visible and unusual noise", "no visible effect,
+no noise" oder "unusual noise without visible light". Diese Beobachtungen
+werden lokal gespeichert und mit **Diagnostics → Save diagnostic log**
+exportiert. Die App bewertet bestätigte ECU-Antworten weiterhin nicht als
+Sichtnachweis. Nach einer abgelehnten Rückgabe wird der nächste Test gesperrt;
+die normale Fahrzeugbeleuchtung muss geprüft werden, bevor die gespeicherte
+Sperre manuell zurückgesetzt werden darf.
 
 ## 0.2.1: Scheinwerfermodule auslesen
 
@@ -38,7 +76,7 @@ alten Diagnoseweg verfügbar, ist am gemeldeten G21 aber weiterhin ohne Wirkung.
 ## Update und erster Test
 
 1. Im MGU Store die Quelle `NamelsMissing/mgu-apps`, Kanal **main**, aktualisieren
-   und **Light Show 0.2.0** installieren.
+   und **Light Show 0.2.2** installieren.
 2. Zündung einschalten und im Stand **P** wählen. Ein laufender Motor ist keine
    Startbedingung der App.
 3. Falls noch eine Startsperre aus 0.1.1 besteht: normale Beleuchtung mit den
@@ -50,7 +88,11 @@ alten Diagnoseweg verfügbar, ist am gemeldeten G21 aber weiterhin ohne Wirkung.
 5. Die tatsächlichen Scheinwerfer beobachten. Erst wenn beide sichtbar reagieren,
    die Muster mit **Light control: Both lights – timed function (new test)** und
    **Start vehicle lights** testen.
-6. Bei ausbleibender Reaktion oder Fehler **Diagnostics** öffnen und das neue
+6. Für den Vergleich mit normaler Lichthupe unter **Diagnostics → Individual light tests**
+   zuerst **High beam left / FL_L** und **High beam right / FL_R** einzeln probieren,
+   die jeweilige Lichtwirkung und Geräusche bewerten. Nur im Stillstand, auf
+   Privatgrund, ohne Personen im Lichtkegel. Nicht während der Fahrt ausprobieren.
+7. Bei ausbleibender Reaktion oder Fehler **Diagnostics** öffnen und das neue
    Protokoll mit **Save diagnostic log** speichern.
 
 **Preview on screen** ist ausschließlich eine Bildschirmvorschau. Eine bestehende
@@ -60,7 +102,8 @@ und startet beim Booten keine Show.
 ## Funktionen und Grenzen
 
 - Zeitbegrenzte gemeinsame Leuchtenfunktion: beide zusammen, Doppel- und Dreifachblitz.
-- Getrennter alter Ausgangsweg mit sechs Links-/Rechts-Mustern für Diagnosezwecke.
+- Getrennter alter Ausgangsweg mit sechs Links-/Rechts-Mustern für Diagnosezwecke
+  sowie 32 einzelne Außenlicht-Ausgänge mit kurzer Prüfzeit und Beobachtungsprotokoll.
 - Auswahl Fernlicht, Tagfahrlicht, Standlicht oder Nebelscheinwerfer vorn.
   Die neue Standlichtfunktion kann auch hintere Leuchten einschließen;
   Nebelscheinwerfer müssen vorhanden sein.
@@ -99,6 +142,8 @@ ist dort dokumentiert. Dieser Interpreter ist keine App-Abhängigkeit.
 | Stop-Auftrag derselben Funktion | `2E D5 42 00 05 00 00` |
 | Leuchtenfunktionsstatus lesen | `22 D5 42` |
 | Alter Ausgang Fernlicht links ein | `2F E3 B5 03 07 01 C0` |
+| Diagnose-Bremslicht Mitte ein (aus der Ausgangstabelle abgeleitet) | `2F E3 B5 03 23 01 C0` |
+| Diagnose-Bremslicht Mitte aus (aus der Ausgangstabelle abgeleitet) | `2F E3 B5 03 23 00 C0` |
 | Alte allgemeine IO-Rückgabe, im Fahrzeug abgelehnt | `2F E3 B5 00 FF` |
 | Standardsitzung anfordern | `10 01` |
 
