@@ -6,6 +6,7 @@ const mgu = require('./kit/mgu');
 const media = require('./media');
 const { VideoBridge, rendererRegister, videoOp, ID } = require('./video_bridge');
 const { Companion } = require('./companion');
+const { readNetworkStatus } = require('./network_status');
 const { openEq } = require('./audio_eq');
 const qrcode = require('./qr_vendor');
 
@@ -52,6 +53,8 @@ mgu.run({
         const video = new VideoBridge(log);
         let page = 0, selected = 0, startAt = 0, files = [], links = loadLinks(ctx.dataDir);
         let notice = '', lastScan = 0, lastVideoBind = 0, boundGpu = null;
+        let network = {ready:false, error:'Network tool not responding'};
+        let lastNetworkPoll = 0, lastNetworkReply = 0, networkPollPending = false;
         let speed = null, speedAt = 0, lastSource = null, importCount = 0;
         const canPlay = () => speed !== null && Date.now() - speedAt < 5000 && speed <= .5;
         const speedHint = () => speed === null || Date.now() - speedAt >= 5000 ?
@@ -91,6 +94,15 @@ mgu.run({
         try { phone.start(); } catch (e) { phone.error = e.message; log.warn('[VideoHub] phone server: ' + e.message); }
         rescan();
         const link = phone.link();
+        function refreshNetwork() {
+            if (networkPollPending) return;
+            networkPollPending = true;
+            readNetworkStatus((error, result) => {
+                networkPollPending = false;
+                network = error ? {ready:false, error:'Network tool unavailable: ' + error.message} : result;
+                lastNetworkReply = Date.now();
+            });
+        }
         function entries() {
             if (page === 0) return files;
             if (page === 1) return links.map(id => ({id, name:'YouTube: ' + id, type:'youtube'}));
@@ -213,26 +225,38 @@ mgu.run({
         function drawConnection(cv) {
             cv.roundRect(49, 142, 1497, 350, 19, COLOR.panel);
             text(cv, 'PHONE IMPORT + PLAYER CHECK', 78, 180, 28, COLOR.white);
-            if (link) qrDraw(cv, link, 89, 209, 244);
-            else text(cv, 'No local IP detected', 95, 295, 24, COLOR.red);
+            const ready = !!(link && phone.listening && network.ready &&
+                Date.now() - lastNetworkReply < 6000);
+            if (ready) qrDraw(cv, link, 89, 209, 244);
+            else {
+                cv.roundRect(89, 209, 244, 244, 14, '#0b1726');
+                text(cv, 'QR LOCKED', 211, 327, 26, COLOR.amber, {align:'center'});
+            }
             text(cv, link ? trim(link.replace(/\?t=.*/, ''), 57) : 'Connect to a reachable MGU network.', 377, 238, 24, COLOR.cyan);
-            text(cv, 'Scan to upload videos or send YouTube links.', 377, 276, 20, COLOR.muted);
+            text(cv, ready ? 'Scan to upload videos or send YouTube links.' :
+                'Waiting for the local server and BMW Wi-Fi firewall.', 377, 276, 20, ready ? COLOR.green : COLOR.amber);
+            const netError = phone.error || (!phone.listening ? 'HTTP server starting' :
+                network.error ? network.error : network.ready ? 'READY - Wi-Fi port 18879 open' :
+                network.listening ? 'Opening BMW Wi-Fi firewall...' : 'Waiting for network helper');
             const rows = [
                 ['Render v4 video', gpuReady() ? 'READY' : 'NOT AVAILABLE'],
                 ['ffmpeg decoder', video.ffmpeg || 'NOT INSTALLED'],
                 ['yt-dlp for YouTube', video.resolver || 'NOT INSTALLED'],
                 ['Experimental audio', ctx.settings.get('audio') === 'alsa' ? (video.aplay || 'aplay missing') : 'OFF'],
-                ['Local companion', phone.error || (link ? 'Port ' + phone.port : 'No detected interface')],
+                ['Local companion', trim(netError, 49)],
             ];
             rows.forEach((r, i) => {
                 const y = 319 + i * 32;
                 text(cv, r[0], 380, y, 17, COLOR.muted);
-                text(cv, trim(r[1], 42), 740, y, 17, r[1] === 'READY' ? COLOR.green : COLOR.white);
+                text(cv, trim(r[1], 49), 740, y, 17, r[1].indexOf('READY') === 0 ? COLOR.green : COLOR.white);
             });
             btn(cv, 'Rescan library', 1135, 390, 360, 53, () => { rescan(); notice = files.length + ' media files found'; }, 'RESCAN');
             if (phone.error) text(cv, trim(phone.error, 70), 90, 479, 18, COLOR.red);
         }
         ctx.loop('MAIN', 12, () => {
+            if (Date.now() - lastNetworkPoll > 2500) {
+                lastNetworkPoll = Date.now(); refreshNetwork();
+            }
             // Stale or missing speed must fail closed, even without another signal event.
             if (!canPlay() && (video.playing || video.resolving)) { stop(); notice = speedHint(); }
             if (Date.now() - lastScan > 15000 && page === 0) rescan();

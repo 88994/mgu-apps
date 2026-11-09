@@ -38,21 +38,34 @@ class Companion {
     constructor(dir, events, log) {
         this.dir = dir; this.events = events || {}; this.log = log || console;
         this.token = crypto.randomBytes(18).toString('hex');
-        this.host = address(); this.port = PORT; this.http = null; this.error = '';
+        this.host = address(); this.port = PORT; this.http = null; this.error = ''; this.listening = false;
         this.inflightBytes = 0;
     }
     link() { return this.host ? 'http://' + this.host + ':' + this.port + '/?t=' + this.token : null; }
     start() {
         if (this.http) return;
         this.http = http.createServer((req, res) => this.handle(req, res));
-        this.http.on('error', e => { this.error = e.message; this.log.warn('[VideoHub] phone server: ' + e.message); });
-        this.http.listen(PORT, '0.0.0.0');
+        this.http.on('error', e => {
+            this.listening = false;
+            this.error = e.message;
+            this.log.warn('[VideoHub] phone server: ' + e.message);
+        });
+        this.http.listen(PORT, '0.0.0.0', () => { this.listening = true; this.error = ''; });
     }
     handle(req, res) {
         if (!privateAddress(req.socket.remoteAddress)) return reply(res, 403, {error:'Local network only'});
         let u;
         try { u = new URL(req.url, 'http://localhost'); }
         catch (_) { return reply(res, 400, {error:'Invalid URL'}); }
+        // The installed root network helper probes this endpoint via loopback.
+        // No pairing token or other app data is revealed here.
+        const remote = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
+        if (u.pathname === '/.mgu-video-health' && req.method === 'GET' &&
+            (remote === '127.0.0.1' || remote === '::1')) {
+            res.writeHead(200, {'Content-Type':'application/json', 'Cache-Control':'no-store',
+                'X-MGU-Video-Hub':'1'});
+            return res.end('{"ok":true}');
+        }
         if (u.searchParams.get('t') !== this.token) return reply(res, 403, {error:'Invalid pairing token'});
         if (u.pathname === '/' && req.method === 'GET') return reply(res, 200, page, 'text/html; charset=utf-8');
         if (u.pathname === '/status' && req.method === 'GET') return reply(res, 200, {
@@ -126,6 +139,6 @@ class Companion {
         file.on('finish', () => { if (received === len) finish(null); });
         req.pipe(file);
     }
-    stop() { if (this.http) this.http.close(); this.http = null; }
+    stop() { if (this.http) this.http.close(); this.http = null; this.listening = false; }
 }
 module.exports = { Companion, privateAddress, address, PORT, LIMIT, QUOTA };

@@ -9,6 +9,7 @@ const cp = require('child_process');
 const media = require('../apps/mgu_video_hub/media');
 const v = require('../apps/mgu_video_hub/video_bridge');
 const { Companion } = require('../apps/mgu_video_hub/companion');
+const { probeVideoHub } = require('../native/video-net/server');
 
 function checkIds() {
     const id = 'dQw4w9WgXcQ';
@@ -65,8 +66,12 @@ async function checkCompanion(dir) {
     const c = new Companion(dir, {youtube:id => added.push(id), fileCount:() => 0, linkCount:() => added.length});
     c.start();
     await new Promise(resolve => c.http.once('listening', resolve));
+    assert.strictEqual(c.listening, true, 'QR must not become ready before HTTP listen succeeds');
     const port = c.http.address().port;
-    let r = await req('GET', port, '/status?t=wrong');
+    let r = await req('GET', port, '/.mgu-video-health');
+    assert.strictEqual(r.code, 200, 'loopback-only root network health check');
+    assert.strictEqual(await probeVideoHub(port), true, 'root helper recognizes the real companion');
+    r = await req('GET', port, '/status?t=wrong');
     assert.strictEqual(r.code, 403);
     const token = c.token;
     r = await req('POST', port, '/youtube?t='+token,
@@ -84,6 +89,8 @@ async function checkCompanion(dir) {
     assert.strictEqual(fs.readFileSync(path.join(dir,'videos','Test.mp4'),'utf8'), buf.toString(),
         'duplicate import must preserve original file');
     await new Promise(resolve => c.http.close(resolve));
+    c.listening = false;
+    assert.strictEqual(await probeVideoHub(port), false, 'root helper detects companion shutdown');
 }
 async function checkVideo(dir) {
     const ffmpeg = v.executable('ffmpeg');

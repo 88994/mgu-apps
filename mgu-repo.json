@@ -120,7 +120,7 @@
       "id": "mgu_video_hub",
       "kind": "app",
       "title": "MGU Video Hub",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "path": "apps/mgu_video_hub",
       "icon": "icon.png",
       "mguHmi": [
@@ -129,7 +129,8 @@
       "requires": {
         "idrive7-renderd": "2.1.6",
         "mgu-inputgate": "1.0.0",
-        "mgu-equalizer-dsp": "0.2.0"
+        "mgu-equalizer-dsp": "0.2.0",
+        "mgu-video-net": "0.1.0"
       },
       "build": {
         "python": "tools/build_store_app.py",
@@ -139,6 +140,17 @@
         "sdk": "oap-sdk",
         "output": "dist/{id}@{version}.tgz"
       }
+    },
+    {
+      "id": "mgu-video-net",
+      "kind": "tool",
+      "title": "Video Hub Network Bridge",
+      "version": "0.1.0",
+      "path": "native/video-net",
+      "mguHmi": [
+        "ID7"
+      ],
+      "uninstallable": true
     },
     {
       "id": "gif_home",

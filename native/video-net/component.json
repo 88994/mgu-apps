@@ -1,0 +1,17 @@
+{
+  "id": "mgu-video-net",
+  "kind": "tool",
+  "version": "0.1.0",
+  "title": "Video Hub Network Bridge",
+  "description": "Scoped firewall access for Video Hub phone import on wlan_bridge",
+  "mguHmi": ["ID7"],
+  "files": [
+    {"path": "mgu-video-net", "mode": "0755"},
+    {"path": "firewall.js", "mode": "0644"},
+    {"path": "server.js", "mode": "0644"}
+  ],
+  "units": [{"name": "mgu-video-net.service", "from": "mgu-video-net.service"}],
+  "enable": [{"unit": "mgu-video-net.service", "target": "multi-user.target"}],
+  "recmgr": ["mgu-video-net"],
+  "restart": ["mgu-video-net.service"]
+}
