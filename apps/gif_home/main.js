@@ -9,6 +9,7 @@ const { open } = require('./kit/pack');
 const { decode, LIMIT } = require('./gif');
 const qrcode = require('./qr_vendor');
 const { GifUploadServer, localAddresses } = require('./upload');
+const { compensateWidget } = require('./widget_tone');
 
 const PREVIEW_W = 1600, PREVIEW_H = 520;
 const PIXEL_IMAGE = 23401; // unique within this app's renderer process
@@ -219,7 +220,9 @@ mgu.run({
                 cv.text('NO GIF', dims[0] / 2, dims[1] / 2 - 4, 28, '#ffffff', { align: 'center', font: 'bold' });
                 cv.text('Open GIF Home to reload', dims[0] / 2, dims[1] / 2 + 28, 17, '#a4a9bb', { align: 'center' });
             }
-            return cv;
+            // Native Drive Recorder widgets often dim/fade the image at the
+            // edges. Pre-compensate here only, never in the actual GIF asset.
+            return compensateWidget(cv, settings.get('widgetTone') || 'balanced');
         }
 
         async function renderScreen() {
@@ -277,7 +280,11 @@ mgu.run({
         reload();
         settings.onChange((key) => {
             if (key === 'source') selectActive('No custom.gif installed or GIF failed to decode');
-            if (key === 'speed' || key === 'fit' || key === 'widgetFps') resetClock();
+            if (key === 'speed' || key === 'fit' || key === 'widgetFps' || key === 'widgetTone') resetClock();
+            if (key === 'widgetBackground') {
+                state.widgetIndex = Object.create(null);
+                updateWidgetBackground();
+            }
         });
         ui.onClick('BTN_SOURCE', () => {
             const current = settings.get('source') || 'auto';
@@ -291,9 +298,19 @@ mgu.run({
         // The native BMW HMI image path is the default. It works without
         // mgu-renderd and avoids requiring a GPU overlay for the GIF preview.
         ctx.loop('MAIN', 4, renderScreen);
+        function updateWidgetBackground() {
+            if (!ctx.widget) return;
+            const enabled = !!settings.get('widgetBackground');
+            ctx.widget.instances().forEach((inst) => {
+                ctx.widget.set(inst.spawnId, 'background', enabled, 'Bool');
+            });
+        }
         if (ctx.widget) {
             ctx.widget.loop(() => settings.get('widgetFps') || 4, widgetImage);
-            ctx.widget.onChange(() => { state.widgetIndex = Object.create(null); });
+            ctx.widget.onChange(() => {
+                state.widgetIndex = Object.create(null);
+                updateWidgetBackground();
+            });
         }
         log.info('GIF Home ready; custom GIF: ' + customFile);
     },

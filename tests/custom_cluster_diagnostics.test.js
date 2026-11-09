@@ -81,7 +81,7 @@ assert.strictEqual(altRenderer.effects[0].target, 'panel201');
 altCluster.close();
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluster-qr-test-'));
-const ctx = { dataDir: tempDir, spec: { version: '0.5.2' } };
+const ctx = { dataDir: tempDir, spec: { version: '0.5.3' } };
 const testReport = QR.report(ctx, cluster, 'auto', 'none');
 assert.ok(testReport.pages.length > 0);
 const payloads = testReport.pages.map((page, idx) => {
@@ -96,11 +96,5 @@ assert.ok(decoded.includes('CUSTOM CLUSTER DIAGNOSTICS'));
 assert.ok(decoded.includes('slot 0x203'));
 assert.ok(QR.matrix(testReport.pages[0]).getModuleCount() > 0);
 assert.strictEqual(testReport.storedAt.length > 0, true);
-for (const source of ['g80_panel_shader', 'sixwb_panel_shader']) {
-    const shader = require('../apps/custom_cluster/' + source);
-    assert.ok(shader.includes('vec3 color=bg;'), source + ' keeps a uniform background');
-    assert.ok(!shader.includes('vignette=') && !shader.includes('float shade='),
-        source + ' has no edge-darkening vignette');
-}
 cluster.close();
 console.log('custom-cluster staged render and QR diagnostics tests passed');

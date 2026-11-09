@@ -144,7 +144,7 @@
       "id": "gif_home",
       "kind": "app",
       "title": "GIF Home",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "path": "apps/gif_home",
       "mguHmi": [
         "ID7"
@@ -162,7 +162,7 @@
       "id": "custom_cluster",
       "kind": "app",
       "title": "Custom Cluster",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "path": "apps/custom_cluster",
       "icon": "icon.png",
       "mguHmi": [

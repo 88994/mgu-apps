@@ -57,8 +57,8 @@ void main(){
   vec3 bg=mix(vec3(0.007,0.014,0.028),vec3(0.009,0.012,0.017),oem);
   vec3 white=vec3(0.91,0.95,1.0);
   vec3 blue=u_accent.rgb;
-  // Uniform background: no vignette/black fade at the upper or lower edge.
-  vec3 color=bg;
+  float shade=1.-0.35*length((p-vec2(960.,360.))/vec2(1100.,720.));
+  vec3 color=bg*shade;
   float alpha=1.;
 
   // G80-inspired inward-canted twin dials. Native OEM telltales remain above

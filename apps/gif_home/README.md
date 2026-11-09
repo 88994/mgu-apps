@@ -26,6 +26,15 @@ The BMW navigation app and its map data are **not** modified or patched.
 - Set **Animation** to **Custom if available** (default) or **Custom GIF only**.
 - **Picture fit**: Fill/crop edges or show the whole picture with letterboxing.
 - **Animation speed**, pause, and widget refresh (1–6 fps) are adjustable.
+- **Native widget background** defaults to **Off**. This changes the
+  Drive Recorder widget's `background` cell to `false` and can remove a native
+  dark-background treatment on skins that honor it. Turn it back On to
+  compare the stock appearance on your firmware.
+- **Home widget brightness** affects only the home-screen tile, not the GIF
+  file or the full-app preview. **Brighter, compensate edges** is the default;
+  **Strong edge compensation** brightens the top and bottom further.
+- The BMW ID7 HMI can apply its own edge fade after the app supplies the image.
+  Brightness compensation cannot guarantee removal of that skin-level mask.
 - A small widget shows a text label instead of an animated image because BMW's
   Drive Recorder template was observed not to display its image in small widgets.
 
@@ -44,7 +53,7 @@ this custom widget on the G21 MGU still needs an in-car check.
 
 For Store installation, the app-specific `tools/build_gif_home.py` wrapper puts
 `rhmiDataStartWidget/` in **both** the `.mgu` and `.tgz` formats without
-changing the shared SDK builder. **Update/reinstall GIF Home to 0.3.0** before
+changing the shared SDK builder. **Update/reinstall GIF Home to 0.3.1** before
 looking for it in the widget picker. An older Store-installed 0.2.0 package
 may not advertise any widget even when the app itself launches.
 
@@ -92,8 +101,8 @@ Build this repository on the head unit using its locally extracted SDK:
 python3 tools/build_gif_home.py gif_home
 ```
 
-The installable packages are `dist/gif_home@0.3.0.mgu` and
-`dist/gif_home@0.3.0.tgz` only when the SDK is available. For offline preview,
+The installable packages are `dist/gif_home@0.3.1.mgu` and
+`dist/gif_home@0.3.1.tgz` only when the SDK is available. For offline preview,
 use the `--preview-only` flag with the **upstream** `idrive7-apps` kit, which
 supports it. The SDK and built packages are deliberately not committed to GitHub.
 
@@ -119,7 +128,7 @@ GIF**. Startup logs include `Built-in GIF loaded` or the precise decode/asset
 error. A persistent blank screen needs the MGU's runtime/HMI logs, not a
 guess at the BMW widget layout.
 
-If `GIF Home` is missing from the home-screen widget chooser **after** a 0.3.0
+If `GIF Home` is missing from the home-screen widget chooser **after** a 0.3.1
 Store update, confirm that the installed package contains `rhmiDataStartWidget`
 and inspect MainApp widget events. If the image doesn't appear in the large
 slot, inspect HMI/widget logs. Do not patch or overwrite BMW navigation.

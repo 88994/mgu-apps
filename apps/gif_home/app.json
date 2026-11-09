@@ -2,7 +2,7 @@
   "id": "gif_home",
   "title": "GIF Home",
   "description": "Offline animated GIF home-screen widget with QR-code phone upload for iDrive 7",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "vendor": "custom",
   "loggingId": "GFI1",
   "iconGlyph": "GIF",
@@ -16,7 +16,7 @@
     "cells": {
       "Title": ["", "Text"],
       "ErrorInfo": [false, "Bool"],
-      "background": [true, "Bool"],
+      "background": [false, "Bool"],
       "ProgressbarVisible": [false, "Bool"],
       "TextRecordings": ["", "Text"],
       "TextCam": ["", "Text"],
@@ -93,6 +93,23 @@
       "unit": "fps",
       "default": 4,
       "steps": [1, 2, 3, 4, 5, 6]
+    },
+    {
+      "key": "widgetBackground",
+      "label": "Native widget background",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "widgetTone",
+      "label": "Home widget brightness",
+      "type": "choice",
+      "default": "balanced",
+      "options": [
+        ["original", "Original GIF colours"],
+        ["balanced", "Brighter, compensate edges"],
+        ["strong", "Strong edge compensation"]
+      ]
     },
     {
       "key": "pause",
