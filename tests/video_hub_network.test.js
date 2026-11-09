@@ -101,6 +101,7 @@ async function checkManifest() {
     assert.ok(/^[a-z0-9][a-z0-9-]*$/.test(tool.id));
     const toolEntry = catalog.components.find(c => c.id === tool.id);
     const appEntry = catalog.components.find(c => c.id === app.id);
+    assert.strictEqual(app.mguInternet, true, 'Video Hub must opt into MGU Store Internet in its package');
     assert.strictEqual(toolEntry.version, tool.version);
     assert.strictEqual(appEntry.version, app.version);
     assert.strictEqual(appEntry.requires[tool.id], tool.version);

@@ -38,11 +38,13 @@ function rendererRegister(gpu, file, id) {
     b.writeUInt32LE(id, 8); p.copy(b, 12);
     return !!gpu._write(b);
 }
-function resolveYoutube(id, resolver, callback) {
+function resolveYoutube(id, resolver, callback, proxyUrl) {
     if (!resolver) { callback(new Error('yt-dlp is missing on the MGU')); return {kill() {}}; }
     const url = 'https://www.youtube.com/watch?v=' + id;
-    const p = cp.spawn(resolver, ['--no-playlist', '--no-warnings', '--get-url',
-        '-f', 'best[height<=720]/best', url], {stdio: ['ignore', 'pipe', 'pipe']});
+    const args = ['--no-playlist', '--no-warnings', '--get-url',
+        '-f', 'best[height<=720]/best', url];
+    if (proxyUrl) args.unshift('--proxy', proxyUrl);
+    const p = cp.spawn(resolver, args, {stdio: ['ignore', 'pipe', 'pipe']});
     let stdout = '', stderr = '', done = false;
     const timer = setTimeout(() => finish(new Error('YouTube resolver timed out')), 25000);
     function finish(error, value) {
@@ -70,6 +72,8 @@ class VideoBridge {
         this.ffmpeg = opts.ffmpeg === undefined ? executable(process.env.MGU_FFMPEG || 'ffmpeg') : opts.ffmpeg;
         this.aplay = opts.aplay === undefined ? executable('aplay') : opts.aplay;
         this.resolver = opts.resolver === undefined ? executable(process.env.MGU_YTDLP || 'yt-dlp') : opts.resolver;
+        this.proxyProvider = opts.proxyProvider || (() => null);
+        this.mediaProxyProvider = opts.mediaProxyProvider || (() => null);
         this.path = '/dev/shm/mgu-video-vhub-' + process.pid + '-' + crypto.randomBytes(4).toString('hex');
         this.fd = null;
         this.status = 'Idle'; this.error = '';
@@ -124,21 +128,33 @@ class VideoBridge {
         if (!this.ffmpeg) { this.status = 'Decoder unavailable'; this.error = 'ffmpeg is not installed'; return; }
         if (source.type === 'youtube') {
             this.status = 'Resolving YouTube stream...';
+            const proxyUrl = this.proxyProvider();
+            if (!proxyUrl) {
+                this.status = 'Internet unavailable';
+                this.error = 'MGU Store uplink proxy not ready; see Connection';
+                return;
+            }
             this.resolving = resolveYoutube(source.id, this.resolver, (err, direct) => {
                 this.resolving = null;
                 if (gen !== this.generation) return;
                 if (err) { this.status = 'YouTube unavailable'; this.error = err.message; return; }
                 this._decode(direct, this.position, width, audio, gen);
-            });
+            }, proxyUrl);
         } else this._decode(source.path, this.position, width, audio, gen);
     }
     _decode(input, seconds, width, audio, gen) {
         if (gen !== this.generation) return;
+        if (/^https:\/\//i.test(input) && !this.mediaProxyProvider()) {
+            this.status = 'Internet unavailable';
+            this.error = 'MGU Store video-stream proxy not ready';
+            return;
+        }
         const w = width === 960 ? 960 : 640, h = w * 9 / 16;
         try { this._open(w, h); } catch (e) { this.status = 'Frame buffer failed'; this.error = e.message; return; }
         this.frames = 0; this.startedAt = seconds; this.tail = Buffer.alloc(0);
         const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-re'];
         if (seconds) args.push('-ss', String(seconds));
+        if (/^https:\/\//i.test(input) && this.mediaProxyProvider()) args.push('-http_proxy', this.mediaProxyProvider());
         args.push('-i', input, '-an', '-vf', 'fps=' + FPS + ',scale=' + w + ':' + h + ',format=yuv420p',
             '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1');
         let err = '';
@@ -162,6 +178,7 @@ class VideoBridge {
         if (!this.aplay) { this.error = 'aplay missing; playback is silent'; return; }
         const args = ['-nostdin', '-hide_banner', '-loglevel', 'error', '-re'];
         if (seconds) args.push('-ss', String(seconds));
+        if (/^https:\/\//i.test(input) && this.mediaProxyProvider()) args.push('-http_proxy', this.mediaProxyProvider());
         args.push('-i', input, '-vn', '-ac', '2', '-ar', '44100', '-f', 's16le', 'pipe:1');
         try {
             this.audioDec = cp.spawn(this.ffmpeg, args, {stdio: ['ignore', 'pipe', 'ignore']});

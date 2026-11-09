@@ -7,6 +7,7 @@ const media = require('./media');
 const { VideoBridge, rendererRegister, videoOp, ID } = require('./video_bridge');
 const { Companion } = require('./companion');
 const { readNetworkStatus } = require('./network_status');
+const { StoreUplink } = require('./uplink');
 const { openEq } = require('./audio_eq');
 const qrcode = require('./qr_vendor');
 
@@ -50,7 +51,12 @@ function saveLinks(dir, links) {
 mgu.run({
     async start(ctx) {
         const log = ctx.log;
-        const video = new VideoBridge(log);
+        const uplink = new StoreUplink(ctx.dataDir, log);
+        uplink.start();
+        const video = new VideoBridge(log, {
+            proxyProvider: () => uplink.ownLease() ? uplink.proxyUrl : null,
+            mediaProxyProvider: () => uplink.ownLease() ? uplink.mediaProxyUrl : null,
+        });
         let page = 0, selected = 0, startAt = 0, files = [], links = loadLinks(ctx.dataDir);
         let notice = '', lastScan = 0, lastVideoBind = 0, boundGpu = null;
         let network = {ready:false, error:'Network tool not responding'};
@@ -152,7 +158,7 @@ mgu.run({
                 stop(); notice = 'Playback stopped: another screen has focus.';
             }
         });
-        const onExit = () => { stop(); phone.stop(); };
+        const onExit = () => { stop(); phone.stop(); uplink.stop(); };
         process.on('exit', onExit);
 
         function drawHeader(cv) {
@@ -242,11 +248,12 @@ mgu.run({
                 ['Render v4 video', gpuReady() ? 'READY' : 'NOT AVAILABLE'],
                 ['ffmpeg decoder', video.ffmpeg || 'NOT INSTALLED'],
                 ['yt-dlp for YouTube', video.resolver || 'NOT INSTALLED'],
+                ['MGU Store Internet', uplink.status()],
                 ['Experimental audio', ctx.settings.get('audio') === 'alsa' ? (video.aplay || 'aplay missing') : 'OFF'],
                 ['Local companion', trim(netError, 49)],
             ];
             rows.forEach((r, i) => {
-                const y = 319 + i * 32;
+                const y = 302 + i * 31;
                 text(cv, r[0], 380, y, 17, COLOR.muted);
                 text(cv, trim(r[1], 49), 740, y, 17, r[1].indexOf('READY') === 0 ? COLOR.green : COLOR.white);
             });

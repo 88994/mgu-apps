@@ -120,7 +120,7 @@
       "id": "mgu_video_hub",
       "kind": "app",
       "title": "MGU Video Hub",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "path": "apps/mgu_video_hub",
       "icon": "icon.png",
       "mguHmi": [

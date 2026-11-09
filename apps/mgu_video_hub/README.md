@@ -1,4 +1,4 @@
-# MGU Video Hub 0.1.2 (experimental)
+# MGU Video Hub 0.1.3 (experimental)
 
 An independent BMW iDrive 7 / MGU video app in `NamelsMissing/mgu-apps`.
 UI language: English. It never writes to vehicle control units.
@@ -17,6 +17,14 @@ UI language: English. It never writes to vehicle control units.
 - **YouTube**: send a public video URL using the phone page, keep saved IDs in
   `data/youtube.json`. Optional `yt-dlp` resolves one online stream per URL;
   optional `ffmpeg` decodes it live. It is not a YouTube download service.
+- **MGU Store tethering**: the installed app package requests `mguInternet: true`
+  so `mgu-uplink` can route the OAP app UID. Its Connection screen distinguishes
+  an offline Store uplink from a Store that is online but has not routed the app.
+  A private HTTPS CONNECT proxy resolves through the per-app Store lease DNS;
+  yt-dlp uses an authenticated proxy, and FFmpeg uses a separate loopback-only
+  CDN proxy restricted to `*.googlevideo.com:443` because FFmpeg does not send
+  HTTP proxy authentication headers in the tested version. Neither proxy
+  exposes a listening port on the car's Wi-Fi interfaces.
 - **Player**: video over mgu-render's protocol v4 (I420 frames in a 3-slot
   `/dev/shm/mgu-video-*` ring); pause/resume, 15-second seek, stop. Touch
   targets and iDrive navigation are provided by the shared MGU kit.
@@ -34,7 +42,9 @@ protocol v4). Without these, the app still opens its library and connection
 page, but actual video playback is explicitly disabled.
 
 For YouTube, also install/configure `yt-dlp` in the MGU's app environment and
-provide a working Internet uplink. YouTube URLs and streams can change, so
+provide a working Internet uplink. **MGU Store Internet access alone does not
+install `yt-dlp`, `ffmpeg` or the JavaScript engine required by recent yt-dlp
+releases.** YouTube URLs and streams can change, so
 playback is best-effort and may be unavailable. An official YouTube iframe
 cannot run inside this OAP renderer because it is **not a web browser**.
 Use the service according to YouTube's terms and rights applicable to the video.
@@ -57,6 +67,38 @@ The following must be checked on the actual vehicle:
    `ip filter input`; it never removes Phone Terminal's rule for port 18890.
    The phone must still be connected over reachable BMW CarPlay Wi-Fi Direct.
 5. Audio device routing, playback performance, and exact synchronization.
+
+### MGU Store Internet / tethering (0.1.3)
+
+1. Ensure the Store's **mgu-uplink** is installed. For Wi-Fi tethering, open
+   **MGU Store → Settings → Wi-Fi** and connect to the phone's personal hotspot;
+   alternatively connect an unlocked iPhone via USB with Personal Hotspot on
+   (accept the phone's Trust dialog), or use a supported USB tether/network
+   adapter. The Store should show **Online**.
+2. Update **MGU Video Hub to 0.1.3** *after* the MGU Store uplink is installed.
+   mgu-deploy then registers `mgu_video_hub` in the uplink's `apps.d` list.
+   Reinstallation matters: simply changing `app.json` without rebuilding and
+   installing the package does not grant Internet access.
+3. Check Video Hub → **Connection** → **MGU Store Internet**. `ROUTED - DNS
+   proxy ready` means this app's own uplink lease and local DNS proxy exist.
+   It does **not** guarantee YouTube is reachable or that the missing video
+   binaries are installed. `Store online - app not routed` means the Store has
+   a link but this app has no per-app lease; check its registration/reinstall.
+
+The MGU shell's `curl https://www.youtube.com` may still fail even when the
+app is routed because the head unit's global resolver is `127.0.0.1` and
+root is not automatically an uplink-approved app UID. **Do not change** the
+stock global route or `/etc/resolv.conf` for this feature.
+
+Read-only diagnostics from Phone Terminal:
+
+```sh
+ls -l /run/mgu-uplink/lease.json /var/opt/mgu-uplink/apps.d/mgu_video_hub
+find /var/opt/public/oap -type f -name uplink.json 2>/dev/null
+```
+
+The app's package must contain `"mguInternet": true` at the top level of its
+installed `package.json`, which the build script copies from `app.json`.
 
 This is a functional app codebase with an unverified HU-dependent decoder and
 audio path. No BMW proprietary SDK, copyrighted videos or ffmpeg binary are
@@ -106,6 +148,7 @@ the local Video Hub HTTP service is listening. Do not publish your QR token.
 ```sh
 node tests/video_hub.test.js
 node tests/video_hub_network.test.js
+node tests/video_hub_uplink.test.js
 python3 -c "import json,sys;sys.path.insert(0,'kit/tools');from build import build_ui;build_ui(json.load(open('apps/mgu_video_hub/app.json')))"
 ```
 

@@ -401,6 +401,10 @@ def build(app_id, language='en'):
             'userLoginRequired': False, 'backgroundPriority': 200, 'someipManifest': 'manifest.json',
         },
     }
+    # mgu-deploy/mgu-uplink only routes Internet traffic for apps that opt in
+    # through their installed package.json, not through the repository catalog.
+    if spec.get('mguInternet') is True:
+        pkg['mguInternet'] = True
     json.dump(pkg, open(os.path.join(src, 'package.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     json.dump(manifest, open(os.path.join(src, 'manifest.json'), 'w', encoding='utf-8', newline='\n'), indent=2)
     shutil.copy(os.path.join(KIT, 'platform', 'permissions.json'), os.path.join(src, 'permissions.json'))
