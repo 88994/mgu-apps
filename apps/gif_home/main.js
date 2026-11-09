@@ -12,6 +12,14 @@ const { GifUploadServer, localAddresses } = require('./upload');
 
 const PREVIEW_W = 1600, PREVIEW_H = 520;
 const PIXEL_IMAGE = 23401; // unique within this app's renderer process
+const PRESETS = [
+    ['demo', 'Animated BMW logo', 'demo.json'],
+    ['drift', 'Pixel drift: Night City', 'drift_city.json'],
+    ['sunset', 'Pixel drive: Sunset', 'sunset_drive.json'],
+    ['garage', 'Pixel art: Neon Garage', 'garage_nights.json'],
+    ['tunnel', 'Pixel art: Midnight Run', 'tunnel_run.json'],
+];
+const SOURCES = ['auto', 'demo', 'drift', 'sunset', 'garage', 'tunnel', 'custom'];
 
 /** The same fit logic works for the stock Canvas and the GPU Recorder. */
 function rectFor(srcW, srcH, x, y, w, h, mode) {
@@ -24,7 +32,7 @@ mgu.run({
     async start(ctx) {
         const ui = ctx.ui, settings = ctx.settings, log = ctx.log;
         const customFile = path.join(ctx.dataDir, 'custom.gif');
-        const state = { custom: null, demo: null, active: null, name: '', problem: '',
+        const state = { custom: null, builtins: Object.create(null), active: null, name: '', problem: '',
             demoError: '', help: false,
             start: Date.now(), pauseAt: null, screenIndex: -1, screenDirty: true,
             widgetIndex: Object.create(null), phone: {
@@ -35,19 +43,22 @@ mgu.run({
             state.start = Date.now(); state.pauseAt = null; state.screenIndex = -1;
             state.screenDirty = true; state.widgetIndex = Object.create(null);
         }
-        function loadDemo() {
+        function loadPreset(id) {
+            if (state.builtins[id]) return state.builtins[id];
+            const preset = PRESETS.find((item) => item[0] === id);
+            if (!preset) return null;
             try {
-                const data = open(path.join(__dirname, 'resources')).json('demo.json');
+                const data = open(path.join(__dirname, 'resources')).json(preset[2]);
                 const base64 = data && data.base64;
-                if (!base64) throw new Error('Demo GIF resource missing');
-                state.demo = decode(Buffer.from(base64, 'base64'));
+                if (!base64) throw new Error(preset[2] + ' missing');
+                state.builtins[id] = decode(Buffer.from(base64, 'base64'));
                 state.demoError = '';
-                log.info('Built-in GIF loaded: ' + state.demo.width + 'x' + state.demo.height +
-                    ', ' + state.demo.frames.length + ' frames');
+                log.info('Built-in GIF loaded: ' + id + ', ' + state.builtins[id].frames.length + ' frames');
+                return state.builtins[id];
             } catch (e) {
-                state.demo = null;
                 state.demoError = e.message || String(e);
-                log.warn('Built-in GIF failed: ' + state.demoError);
+                log.warn('Built-in GIF failed (' + id + '): ' + state.demoError);
+                return null;
             }
         }
         function loadCustom() {
@@ -66,10 +77,13 @@ mgu.run({
         }
         function selectActive() {
             const source = settings.get('source') || 'auto';
-            // Always show the bundled demo when a custom source is not available.
-            // A stale "Custom GIF only" setting must never leave the home tile blank.
-            state.active = source === 'demo' ? state.demo : (state.custom || state.demo);
-            state.name = !state.active ? 'No GIF' : state.active === state.custom ? 'custom.gif' : 'Built-in demo';
+            const preset = PRESETS.find((item) => item[0] === source);
+            // Old custom/auto choices still work, while all new presets are offline.
+            // When a file fails to load, retain the BMW logo as a visible fallback.
+            state.active = preset ? loadPreset(source) : state.custom;
+            if (!state.active) state.active = loadPreset('demo');
+            state.name = !state.active ? 'No GIF' : state.active === state.custom ? 'custom.gif' :
+                preset && state.active === state.builtins[source] ? preset[1] : 'Animated BMW logo';
             state.problem = !state.active ? ('Built-in GIF unavailable: ' + (state.demoError || 'resource missing')) :
                 source === 'custom' && !state.custom ? 'Custom GIF missing - playing built-in demo' : '';
             resetClock();
@@ -259,16 +273,19 @@ mgu.run({
             await ui.image('MAIN_GFX', cv);
         }
 
-        loadDemo();
+        loadPreset('demo');
         reload();
         settings.onChange((key) => {
             if (key === 'source') selectActive('No custom.gif installed or GIF failed to decode');
             if (key === 'speed' || key === 'fit' || key === 'widgetFps') resetClock();
         });
-        ui.onClick('BTN_SOURCE', () => settings.set('source', settings.get('source') === 'demo' ? 'auto' : 'demo'));
+        ui.onClick('BTN_SOURCE', () => {
+            const current = settings.get('source') || 'auto';
+            settings.set('source', SOURCES[(SOURCES.indexOf(current) + 1) % SOURCES.length]);
+        });
         ui.onClick('BTN_PHONE', togglePhone);
         ui.onClick('BTN_NEXT', nextIp);
-        ui.onClick('BTN_RELOAD', () => { loadDemo(); reload(); state.phone.status = 'GIF reloaded'; });
+        ui.onClick('BTN_RELOAD', () => { state.builtins = Object.create(null); loadPreset('demo'); reload(); state.phone.status = 'GIF reloaded'; });
         ui.onClick('BTN_HELP', () => { state.help = !state.help; state.screenDirty = true; });
         ui.onVisible((name, visible) => { if (name === 'MAIN' && visible) state.screenDirty = true; });
         // The native BMW HMI image path is the default. It works without

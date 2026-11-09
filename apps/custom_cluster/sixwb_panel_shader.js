@@ -69,8 +69,8 @@ void main(){
   vec3 bright=vec3(.88,.91,.93);
   vec3 bg=mix(vec3(.009,.012,.018),vec3(.012,.005,.008),sport*.65);
   bg=mix(bg,vec3(.006,.013,.021),eco*.70);
-  float vignette=.88+.12*(1.-length((p-vec2(960.,360.))/vec2(1280.,950.)));
-  vec3 color=bg*vignette;
+  // Uniform background: no vignette/black fade at the upper or lower edge.
+  vec3 color=bg;
   float alpha=1.;
 
   // Fully electronic 6WB-style round gauges with fine ticks and a needle.

@@ -2,7 +2,7 @@
   "id": "gif_home",
   "title": "GIF Home",
   "description": "Offline animated GIF home-screen widget with QR-code phone upload for iDrive 7",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "vendor": "custom",
   "loggingId": "GFI1",
   "iconGlyph": "GIF",
@@ -57,7 +57,11 @@
       "default": "auto",
       "options": [
         ["auto", "Custom if available"],
-        ["demo", "Built-in demo"],
+        ["demo", "Animated BMW logo"],
+        ["drift", "Pixel drift: Night City BMW"],
+        ["sunset", "Pixel drive: Sunset"],
+        ["garage", "Pixel art: Neon Garage"],
+        ["tunnel", "Pixel art: Midnight Run"],
         ["custom", "Custom GIF only"]
       ]
     },

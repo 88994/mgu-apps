@@ -1,6 +1,7 @@
 """Regression checks for the Store-installable GIF Home start-widget bundle."""
 
 import importlib.util
+import base64
 import json
 from pathlib import Path
 import tempfile
@@ -44,10 +45,27 @@ class GifHomeWidgetTests(unittest.TestCase):
 
     def test_standard_gif_resource_is_included(self):
         data = json.loads((ROOT / "apps" / "gif_home" / "resources" / "demo.json").read_text(encoding="utf-8"))
-        import base64
         gif = base64.b64decode(data["base64"], validate=True)
         self.assertTrue(gif.startswith(b"GIF89a") or gif.startswith(b"GIF87a"))
         self.assertLessEqual(len(gif), 6 * 1024 * 1024)
+
+    def test_pixel_art_presets_are_individually_packaged(self):
+        from PIL import Image
+        from io import BytesIO
+
+        app = json.loads((ROOT / "apps" / "gif_home" / "app.json").read_text(encoding="utf-8"))
+        sources = dict(app["settings"][1]["options"])
+        for name, file_name in (("drift", "drift_city"), ("sunset", "sunset_drive"),
+                                ("garage", "garage_nights"), ("tunnel", "tunnel_run")):
+            with self.subTest(name=name):
+                self.assertIn(name, sources)
+                data = json.loads((ROOT / "apps" / "gif_home" / "resources" /
+                                   f"{file_name}.json").read_text(encoding="utf-8"))
+                raw = base64.b64decode(data["base64"], validate=True)
+                self.assertLessEqual(len(raw), 6 * 1024 * 1024)
+                gif = Image.open(BytesIO(raw))
+                self.assertEqual(gif.size, (192, 128))
+                self.assertEqual(gif.n_frames, 18)
 
 
 if __name__ == "__main__":
