@@ -1,4 +1,4 @@
-# Light Show 0.1.0
+# Light Show 0.1.1
 
 Stroboskop-App für BMW MGU iDrive 7, angelehnt an das Reel von bmwneva:
 https://www.instagram.com/reel/DfR0l0HxKNS/
@@ -131,3 +131,7 @@ MGU App Kit und Diagnose-Transport: cauliflowermossgrape/idrive7-apps (MIT).
 Store und USB-Katalogformat: robertnisipeanu/mgu-store.
 Referenzprüfung der eigenen PRG-Datei: EdiabasX von emdzej; nicht Bestandteil der
 App und keine Laufzeitabhängigkeit. Siehe `SOURCE-NOTES.txt` im ZIP.
+
+## 0.1.1: diagnosis after the first vehicle report
+
+The supplied video shows 46 positive control acknowledgements and NRC22 on IO return, followed by a positive default-session reply. Physical high-beam operation was reported absent. This update does not claim to solve that routing issue. It records raw E3B9 output status before and after the first ON, preserves the original show error, and provides a separate manual acknowledgement screen to clear a saved stop lock only after the user has checked normal vehicle lighting. Identity, standstill/P and a positive default-session reply remain mandatory. No alternate actuator commands or communication-disable requests are added.

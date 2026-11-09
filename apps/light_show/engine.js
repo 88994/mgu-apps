@@ -11,7 +11,7 @@ class Engine {
         this.changed = o.changed || (() => {}); this.log = o.log;
         this.state = 'IDLE'; this.note = 'Ready'; this.mask = [0, 0];
         this.sent = 0; this.stepMs = 0; this.run = null; this.cancel = false;
-        this.releaseConfirmed = false; this.stopRequested = false;
+        this.releaseConfirmed = false; this.stopRequested = false; this.outputSamples = []; this.originalFault = null;
     }
     status() {
         return { state: this.state, note: this.note, mask: this.mask.slice(), sent: this.sent,
@@ -19,6 +19,26 @@ class Engine {
             remainingSeconds: this.deadline ? Math.max(0, Math.ceil((this.deadline - this.now()) / 1000)) : 0 };
     }
     update(state, note) { this.state = state; this.note = note; this.changed(); }
+    async sampleOutputs(label) {
+        if (!this.link.readOutputs) return;
+        try { this.outputSamples.push({ label, reply: P.hex(await this.link.readOutputs()) }); }
+        catch (e) { this.outputSamples.push({ label, error: String(e.message || e) }); }
+        this.changed();
+    }
+    async acknowledgeNormalLights() {
+        if (this.run || this.guard.reason()) throw new Error('Stop show and select P at standstill first');
+        let done;
+        this.run = new Promise((r) => { done = r; });
+        try {
+            await this.link.identify();
+            if (this.guard.reason()) throw new Error(this.guard.reason());
+            await this.link.defaultSession();
+            if (this.journal.pending()) this.journal.clear();
+            this.releaseConfirmed = false;
+            this.update('IDLE', 'Saved stop lock cleared after user light check; OEM IO release remains unconfirmed');
+        } catch (e) { this.update('ERROR', String(e.message || e)); }
+        finally { this.run = null; done(); }
+    }
     async identify() {
         if (this.run) return;
         this.update('CHECKING', 'Reading BDC identity');
@@ -37,7 +57,7 @@ class Engine {
         if (reason) { this.update('BLOCKED', reason); return Promise.resolve(); }
         if (this.journal.pending()) { this.update('ERROR', 'OEM release pending - press STOP first'); return Promise.resolve(); }
         this.cancel = false; this.stopRequested = false; this.stopReason = null; this.releaseConfirmed = false;
-        this.sent = 0; this.stepMs = 0; this.mask = [0, 0];
+        this.sent = 0; this.stepMs = 0; this.mask = [0, 0]; this.outputSamples = []; this.originalFault = null;
         this.update('STARTING', 'Checking BDC_G05');
         let resolve;
         this.run = new Promise((r) => { resolve = r; });
@@ -61,6 +81,8 @@ class Engine {
             // session/lamps. If persistence fails, no control request is sent.
             this.journal.mark(this.link.index); dirty = true;
             await this.link.session();
+            await this.sampleOutputs('Before control');
+            let afterSampled = false;
             if (!this.allowed()) return;
             const pair = P.PAIRS[c.lights], pattern = P.PATTERNS[c.pattern].steps;
             const outputs = [pair.left, pair.right];
@@ -77,6 +99,7 @@ class Engine {
                     if (previous[i] !== mask[i]) {
                         await this.link.set(outputs[i], mask[i]); this.sent++;
                         previous[i] = mask[i]; this.mask[i] = mask[i]; this.changed();
+                        if (mask[i] === 1 && !afterSampled) { afterSampled = true; await this.sampleOutputs('After first ON, output ' + outputs[i]); }
                     }
                 }
                 if (!this.allowed() || this.now() >= this.deadline) break;
@@ -88,7 +111,7 @@ class Engine {
                 const wait = Math.max(0, c.tempo - (this.now() - begin));
                 for (let slept = 0; slept < wait && !this.cancel; slept += 25) await this.sleep(Math.min(25, wait - slept));
             }
-        } catch (e) { fault = String(e.message || e); }
+        } catch (e) { fault = String(e.message || e); this.originalFault = fault; }
         finally {
             this.deadline = 0;
             if (dirty) {
@@ -131,7 +154,7 @@ class Engine {
         if (!error && released) {
             try { this.journal.clear(); } catch (e) { error = 'Could not clear recovery marker: ' + e.message; }
         }
-        if (error) { this.update('ERROR', 'OEM release pending: ' + error); return false; }
+        if (error) { this.update('ERROR', (this.originalFault ? 'Start/show: ' + this.originalFault + ' | ' : '') + 'OEM release pending: ' + error); return false; }
         return true;
     }
 }

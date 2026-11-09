@@ -43,6 +43,7 @@ class Link {
         if (this.index !== P.INDEX) throw new Error('BDC variant ' + (this.index || 'unknown') + ' is not supported (requires BDC_G05)');
         return this.index;
     }
+    async readOutputs() { return this.request(0x22, [0xE3, 0xB9]); }
     async session() { return this.request(0x10, [0x03]); }
     async set(output, on) { return this.request(0x2F, P.control(output, on)); }
     async keepalive() { return this.request(0x3E, [0x00]); }

@@ -36,7 +36,7 @@ mgu.run({
         function diagnostics() {
             const s = engine.status(), g = guard.snapshot();
             return [
-                'Light Show 0.1.0 - EXPERIMENTAL / no vehicle test yet',
+                'Light Show 0.1.1 - EXPERIMENTAL / no vehicle test yet',
                 'State: ' + s.state + ' - ' + s.note,
                 'TASU: ' + (link.available ? 'available' : 'unavailable'),
                 'BDC address: 40 | SGBD: ' + (link.index || 'not read') + ' | required: ' + P.INDEX,
@@ -46,14 +46,17 @@ mgu.run({
                 'OEM release response: ' + (s.releaseConfirmed ? 'confirmed' : 'not confirmed this run'),
                 'Recovery marker: ' + (journal.pending() ? 'PENDING - press STOP' : 'clear'),
                 'A positive diagnostic response is not a measured lamp state.',
+                'Original start/show error: ' + (engine.originalFault || 'none recorded'),
+                'Output status (raw, not physical proof):',
+            ].concat(engine.outputSamples.map((x) => x.label + ': ' + (x.reply || x.error))).concat([
                 '', 'Recent diagnostic requests:',
-            ].concat(link.trace.slice(-14).map((r) => r.at.slice(11, 23) + ' > ' + r.tx + ' < ' + (r.rx || r.error || 'waiting'))).join('\n');
+            ]).concat(link.trace.slice(-14).map((r) => r.at.slice(11, 23) + ' > ' + r.tx + ' < ' + (r.rx || r.error || 'waiting'))).join('\n');
         }
         function saveLog() {
             try {
-                const report = { app: 'light_show', version: '0.1.0', at: new Date().toISOString(),
+                const report = { app: 'light_show', version: '0.1.1', at: new Date().toISOString(),
                     vehicleTested: false, status: engine.status(), guard: guard.snapshot(),
-                    settings: config(), bdcIndex: link.index, recoveryPending: journal.pending(), trace: link.trace };
+                    settings: config(), bdcIndex: link.index, recoveryPending: journal.pending(), originalFault: engine.originalFault, outputSamples: engine.outputSamples, trace: link.trace };
                 const file = path.join(ctx.dataDir, 'light-show-diagnostics.json');
                 fs.writeFileSync(file + '.tmp', JSON.stringify(report, null, 2)); fs.renameSync(file + '.tmp', file);
                 ui.text('DIAG_TEXT', diagnostics() + '\n\nSaved: ' + file);
@@ -69,6 +72,11 @@ mgu.run({
         ['BTN_IDENTIFY', 'BTN_DIAG_IDENTIFY'].forEach((name) => ui.onClick(name, () => engine.identify()));
         ui.onClick('BTN_DIAG', () => { ui.text('DIAG_TEXT', diagnostics()); return ui.open('DIAGNOSTICS'); });
         ui.onClick('BTN_EXPORT', saveLog);
+        ui.onClick('BTN_CLEAR_LOCK', () => ui.open('CONFIRM_LIGHTS'));
+        ui.onClick('BTN_CANCEL_CLEAR', () => ui.open('DIAGNOSTICS'));
+        ui.onClick('BTN_CONFIRM_CLEAR', async () => {
+            await engine.acknowledgeNormalLights(); await ui.open('DIAGNOSTICS');
+        });
         ui.onClick('BTN_PREVIEW', async () => {
             // Stop an existing live show before entering the separate preview.
             await engine.stop('Opening screen preview');
@@ -89,7 +97,7 @@ mgu.run({
         ui.onVisible(() => {
             clearTimeout(hiddenTimer);
             hiddenTimer = setTimeout(() => {
-                if (!['MAIN', 'PREVIEW', 'DIAGNOSTICS'].some((n) => ui.isVisible(n))) {
+                if (!['MAIN', 'PREVIEW', 'DIAGNOSTICS', 'CONFIRM_LIGHTS'].some((n) => ui.isVisible(n))) {
                     preview = null; if (engine.run) engine.stop('App closed');
                 }
             }, 250);

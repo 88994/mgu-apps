@@ -14,7 +14,7 @@ Eleven source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/
 | `custom_cluster` | 0.5.1 (experimental) | G80/G21/6WB previews, parked-only panels, new small shader probe, renderer diagnostics and QR log export; Waze/BMW map coexistence unverified. |
 | `mgu_phone_terminal` | 0.1.3 (experimental) | On-car QR pairing for a temporary phone-browser root command console. Requires the `mgu-phone-bridge` system tool (0.1.2); fixes root-owned key permissions and adds UID diagnostics; real MGU command/network operation not yet verified. |
 | `equalizer` | 0.2.0 (experimental) | Seven real parametric PCM DSP bands, gain/frequency/Q/preamp, profiles and native BMW tone controls. Video Hub PCM is connected; stock CarPlay/radio routing is not implemented. Vehicle audio output remains unverified. |
-| `light_show` | 0.1.0 (experimental) | Native strobe menu: six patterns, four front light pairs, tempo, automatic stop and separate screen preview. Requires stationary vehicle in P and identified BDC_G05. Physical lamp operation untested. |
+| `light_show` | 0.1.1 (experimental) | Native strobe menu: six patterns, four front light pairs, tempo, automatic stop and separate screen preview. Requires stationary vehicle in P and identified BDC_G05. Physical lamp operation untested. |
 
 The Store reads `mgu-repo.json` on **main**, detects each `apps/*/app.json`, builds the app on the head unit from its own SDK donor, and checks version changes. No BMW SDK or binary diagnostic PRGs are published here.
 

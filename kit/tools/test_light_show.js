@@ -204,6 +204,29 @@ test('Busy TASU verdict is surfaced without retrying or flooding the shared tran
     await assert.rejects(r.link.request(0x2F, P.release()), /transport refused/); assert.strictEqual(r.requests.length, 1);
 });
 
+test('Manual normal-light acknowledgement clears only after identity and default-session success', async () => {
+    const r = rig({ pending: true }); await r.engine.acknowledgeNormalLights();
+    assert.deepStrictEqual(r.calls, ['identify', 'default', 'clear']);
+    assert.strictEqual(r.engine.releaseConfirmed, false);
+});
+test('Manual acknowledgement cannot clear the lock while moving or on failed session return', async () => {
+    const r = rig({ pending: true }); r.state.block = 'Moving';
+    await assert.rejects(r.engine.acknowledgeNormalLights()); assert.deepStrictEqual(r.calls, []);
+    const f = rig({ pending: true, defaultFail: true }); await f.engine.acknowledgeNormalLights();
+    assert.strictEqual(f.journal.pending(), true); assert(!f.calls.includes('clear'));
+});
+test('Output snapshots are read only and their failure does not become physical success', async () => {
+    const r = rig(); r.link.readOutputs = async () => { throw Error('read refused'); };
+    await r.engine.start(cfg); assert.strictEqual(r.engine.outputSamples.length, 2);
+    assert(r.engine.outputSamples.every((x) => x.error === 'read refused'));
+    assert.strictEqual(r.engine.state, 'IDLE');
+});
+test('Original actuator error survives a failed cleanup', async () => {
+    const r = rig({ setFail: true, releaseFail: true }); await r.engine.start(cfg);
+    assert.strictEqual(r.engine.originalFault, 'NRC 31');
+    assert(r.engine.note.includes('NRC 31')); assert(r.engine.note.includes('release timed out'));
+});
+
 (async () => {
     let failed = 0;
     for (const [name, fn] of tests) {
