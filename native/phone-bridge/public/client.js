@@ -3,13 +3,14 @@
 (function () {
     const $ = (id) => document.getElementById(id);
     const state = $('state'), pairPanel = $('pair-panel'), terminal = $('terminal-panel');
-    let expires = 0, busy = false;
+    let expires = 0, busy = false, preparingFile = false;
 
     function showAuth(active) {
         pairPanel.classList.toggle('hidden', active);
         terminal.classList.toggle('hidden', !active);
         state.textContent = active ? 'Connected' : 'Not connected';
         state.classList.toggle('ok', active);
+        if (!active) $('save-file').classList.add('hidden');
     }
     async function api(endpoint, body) {
         const res = await fetch('/api/' + endpoint, {
@@ -77,6 +78,35 @@
         button.addEventListener('click', () => { $('command').value = button.getAttribute('data-cmd'); });
     });
     $('clear').addEventListener('click', () => { $('output').textContent = 'Output cleared.'; });
+    $('example-file').addEventListener('click', () => { $('file-path').value = '/tmp/carplay-audio-analysis.tgz'; });
+    $('prepare-file').addEventListener('click', async () => {
+        if (preparingFile) return;
+        const file = $('file-path').value.trim();
+        if (!file) { $('file-message').textContent = 'Enter the absolute path of the file.'; return; }
+        preparingFile = true;
+        $('prepare-file').disabled = true;
+        $('save-file').classList.add('hidden');
+        $('file-message').textContent = 'Checking the file on the head unit…';
+        try {
+            const result = await api('download', { path: file });
+            const size = result.size < 1024 ? result.size + ' bytes' : (result.size / (1024 * 1024)).toFixed(2) + ' MiB';
+            $('save-file').href = result.url;
+            $('save-file').download = result.filename;
+            $('save-file').textContent = 'Save ' + result.filename;
+            $('save-file').classList.remove('hidden');
+            $('file-message').textContent = 'File ready (' + size + '). Tap Save within ' + result.validSeconds + ' seconds.';
+        } catch (error) {
+            $('file-message').textContent = 'Download error: ' + error.message;
+            if (/Session ended|Not paired/.test(error.message)) showAuth(false);
+        } finally {
+            preparingFile = false;
+            $('prepare-file').disabled = false;
+        }
+    });
+    $('save-file').addEventListener('click', () => {
+        $('file-message').textContent = 'Download requested. Check your browser downloads or Files app. Prepare a new link to retry.';
+        $('save-file').classList.add('hidden');
+    });
     $('disconnect').addEventListener('click', async () => {
         try { await api('logout'); } catch (e) { /* still remove the local UI */ }
         showAuth(false);

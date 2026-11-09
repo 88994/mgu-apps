@@ -27,6 +27,19 @@ function httpRequest(port, method, endpoint, body, extra) {
     });
 }
 
+function fileRequest(port, endpoint, extra) {
+    return new Promise((resolve, reject) => {
+        const req = http.request({ hostname: '127.0.0.1', port, method: 'GET', path: endpoint,
+            headers: extra || {} }, (res) => {
+            const parts = [];
+            res.on('data', (part) => parts.push(part));
+            res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, data: Buffer.concat(parts) }));
+        });
+        req.on('error', reject);
+        req.end();
+    });
+}
+
 async function test() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mgu-bridge-test-'));
     const bridge = makeBridge({ dataDir: dir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1', firewall: false });
@@ -62,6 +75,39 @@ async function test() {
         assert.strictEqual((await pub('POST', '/api/exec', { command: 'printf should-not-run' })).status, 401);
         assert.strictEqual((await pub('POST', '/api/exec', { command: 'printf blocked' }, { Cookie: cookie, Origin: 'http://evil.test' })).status, 403);
 
+        const archive = path.join(dir, 'carplay-audio-analysis.tgz');
+        const binary = Buffer.from([0, 255, 127, 42, 31, 0, 13, 10]);
+        fs.writeFileSync(archive, binary);
+        const download = (file) => pub('POST', '/api/download', { path: file }, { Cookie: cookie });
+        assert.strictEqual((await pub('POST', '/api/download', { path: archive })).status, 401, 'downloads require pairing');
+        assert.strictEqual((await pub('POST', '/api/download', { path: archive }, { Cookie: cookie, Origin: 'http://evil.test' })).status, 403);
+        assert.strictEqual((await download('relative.tgz')).status, 400, 'downloads require absolute paths');
+        assert.strictEqual((await download(dir)).status, 400, 'directories need archives');
+        const symlink = path.join(dir, 'link.tgz');
+        fs.symlinkSync(archive, symlink);
+        assert.strictEqual((await download(symlink)).status, 404, 'do not follow final symlinks');
+        fs.unlinkSync(symlink);
+
+        const oversized = path.join(dir, 'oversized.tgz');
+        fs.writeFileSync(oversized, '');
+        fs.truncateSync(oversized, 256 * 1024 * 1024 + 1);
+        assert.strictEqual((await download(oversized)).status, 400, 'bounded file size');
+        fs.unlinkSync(oversized);
+
+        const ticket = await download(archive);
+        assert.strictEqual(ticket.status, 200);
+        assert.ok(/^\/api\/file\/[a-f0-9]{48}$/.test(ticket.body.url), 'ticket does not expose local path');
+        assert.strictEqual(ticket.body.filename, 'carplay-audio-analysis.tgz');
+        assert.strictEqual(ticket.body.size, binary.length);
+        assert.strictEqual((await fileRequest(ports.publicPort, ticket.body.url)).status, 401, 'file URLs also require cookie');
+        const fetched = await fileRequest(ports.publicPort, ticket.body.url, { Cookie: cookie });
+        assert.strictEqual(fetched.status, 200);
+        assert.deepStrictEqual(fetched.data, binary, 'binary download must not be decoded as text');
+        assert.ok(fetched.headers['content-disposition'].includes('attachment; filename="carplay-audio-analysis.tgz"'));
+        assert.strictEqual((await fileRequest(ports.publicPort, ticket.body.url, { Cookie: cookie })).status, 404, 'download link must be one-use');
+        const revokedTicket = await download(archive);
+        assert.strictEqual(revokedTicket.status, 200);
+
         const pending = pub('POST', '/api/exec', { command: 'sleep 5; printf not-allowed' }, { Cookie: cookie });
         await new Promise((r) => setTimeout(r, 80));
         await local('POST', '/local/stop');
@@ -71,8 +117,10 @@ async function test() {
         assert.ok(!killed.body.stdout.includes('not-allowed'));
 
         assert.strictEqual((await pub('GET', '/api/status', null, { Cookie: cookie })).status, 401);
+        assert.strictEqual((await fileRequest(ports.publicPort, revokedTicket.body.url, { Cookie: cookie })).status, 401, 'revoke invalidates downloads');
         assert.strictEqual((await local('GET', '/local/status')).body.state, 'closed');
-        console.log('Bridge tests passed: local key, pairing, one-use token, command, same-origin, revoke + kill');
+        fs.unlinkSync(archive);
+        console.log('Bridge tests passed: local key, pairing, command, authenticated one-time file downloads, revoke + kill');
     } finally {
         await bridge.stop();
         fs.unlinkSync(path.join(dir, 'phone-bridge.key'));

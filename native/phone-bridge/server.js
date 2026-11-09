@@ -16,6 +16,8 @@ const PAIR_MS = 3 * 60 * 1000;
 const SESSION_MS = 15 * 60 * 1000;
 const LIMIT_MS = 15000;
 const MAX_OUT = 60000;
+const MAX_DOWNLOAD = 256 * 1024 * 1024;
+const DOWNLOAD_TICKET_MS = 60 * 1000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const MAX_BODY = 4096;
 
@@ -117,6 +119,8 @@ function makeBridge(options) {
     const now = options.now || Date.now;
     let controlKey = null, pairToken = null, pairUntil = 0;
     let sessionToken = null, sessionUntil = 0, running = false, runningProc = null, failureCount = 0, blockUntil = 0;
+    let downloadTicket = null;
+    const downloads = new Set();
     let localServer, publicServer, keyPoll, firewallPoll, provisionError = 'waiting for app registration';
     let firewallReady = false, firewallError = '', firewallQueue = Promise.resolve(), lastFirewallCheck = 0;
 
@@ -145,6 +149,71 @@ function makeBridge(options) {
         catch (e) { try { runningProc.kill('SIGKILL'); } catch (ignored) {} }
     }
 
+    function cancelDownloads() {
+        downloadTicket = null;
+        downloads.forEach((item) => { item.stream.destroy(); item.res.destroy(); });
+        downloads.clear();
+    }
+
+    function openDownloadFile(file) {
+        if (typeof file !== 'string' || !path.isAbsolute(file) || file.length > 2048 || /[\x00-\x1f\x7f]/.test(file)) {
+            throw new Error('Enter a valid absolute file path');
+        }
+        const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0);
+        const fd = fs.openSync(file, flags);
+        try {
+            const stat = fs.fstatSync(fd);
+            if (!stat.isFile()) throw new Error('Only regular files can be downloaded; archive directories first');
+            if (stat.size > MAX_DOWNLOAD) throw new Error('File exceeds the 256 MiB download limit');
+            return { fd, stat, name: path.basename(file).replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 120) || 'download.bin' };
+        } catch (error) {
+            fs.closeSync(fd);
+            throw error;
+        }
+    }
+
+    function prepareDownload(res, file) {
+        let opened;
+        try { opened = openDownloadFile(file); }
+        catch (error) {
+            const missing = error.code === 'ENOENT' || error.code === 'EACCES' || error.code === 'ELOOP';
+            return send(res, missing ? 404 : 400, { error: missing ? 'File not found, unreadable or a symbolic link' : error.message });
+        }
+        fs.closeSync(opened.fd);
+        const id = crypto.randomBytes(24).toString('hex');
+        downloadTicket = { id, file, until: Math.min(sessionUntil, now() + DOWNLOAD_TICKET_MS) };
+        return send(res, 200, {
+            url: '/api/file/' + id, filename: opened.name, size: opened.stat.size,
+            validSeconds: Math.max(0, Math.floor((downloadTicket.until - now()) / 1000))
+        });
+    }
+
+    function serveDownload(req, res, id) {
+        if (!hasSession(req)) return send(res, 401, { error: 'Session ended. Pair again on iDrive.' });
+        const ticket = downloadTicket;
+        if (!ticket || !same(id, ticket.id) || now() >= ticket.until) {
+            return send(res, 404, { error: 'Download link expired or already used. Prepare a new link.' });
+        }
+        downloadTicket = null; // One-time download URL; never contains the filesystem path.
+        let opened;
+        try { opened = openDownloadFile(ticket.file); }
+        catch (error) { return send(res, 404, { error: 'File is no longer available for download' }); }
+        res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': 'attachment; filename="' + opened.name + '"',
+            'Content-Length': opened.stat.size,
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'no-referrer'
+        });
+        const stream = fs.createReadStream(null, { fd: opened.fd, autoClose: true, highWaterMark: 64 * 1024 });
+        const active = { res, stream };
+        downloads.add(active);
+        res.on('close', () => { downloads.delete(active); stream.destroy(); });
+        stream.on('error', () => { downloads.delete(active); res.destroy(); });
+        stream.pipe(res);
+    }
+
     function ensureKey() {
         if (controlKey) return controlKey;
         try { controlKey = secretFromDataDir(findAppData(options)); provisionError = ''; }
@@ -158,14 +227,14 @@ function makeBridge(options) {
     }
     function closed() {
         if (pairToken && now() >= pairUntil) pairToken = null;
-        if (sessionToken && now() >= sessionUntil) { sessionToken = null; terminateCommand(); }
+        if (sessionToken && now() >= sessionUntil) { sessionToken = null; terminateCommand(); cancelDownloads(); }
         return !pairToken && !sessionToken;
     }
-    function revoke() { terminateCommand(); pairToken = null; pairUntil = 0; sessionToken = null; sessionUntil = 0; }
+    function revoke() { terminateCommand(); cancelDownloads(); pairToken = null; pairUntil = 0; sessionToken = null; sessionUntil = 0; }
     function status() {
         closed();
         return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0,
-            addresses: addresses(), port: publicPort, version: '0.1.3',
+            addresses: addresses(), port: publicPort, version: '0.1.4',
             firewall: { ready: firewallReady && !!(sessionToken || pairToken), error: firewallError, interface: 'wlan_bridge' } };
     }
 
@@ -241,6 +310,9 @@ function makeBridge(options) {
             if (!hasSession(req)) return send(res, 401, { error: 'Not paired' });
             return send(res, 200, { authenticated: true, expiresAt: sessionUntil, running: running });
         }
+        if (req.method === 'GET' && /^\/api\/file\/[a-f0-9]{48}$/.test(route)) {
+            return serveDownload(req, res, route.slice('/api/file/'.length));
+        }
         if (req.method !== 'POST') return send(res, 404, { error: 'Not found' });
         if (!originOk(req) || req.headers['x-terminal-request'] !== '1') return send(res, 403, { error: 'Invalid request origin' });
         if (route === '/api/pair') {
@@ -265,6 +337,10 @@ function makeBridge(options) {
         if (route === '/api/exec') return readBody(req, (e, body) => {
             if (e) return send(res, 400, { error: e.message });
             command(req, res, body && body.command);
+        });
+        if (route === '/api/download') return readBody(req, (e, body) => {
+            if (e) return send(res, 400, { error: e.message });
+            prepareDownload(res, body && body.path);
         });
         send(res, 404, { error: 'Not found' });
     }

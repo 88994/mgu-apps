@@ -34,6 +34,18 @@
       <label for="output">Output</label>
       <pre id="output" role="log" aria-live="polite">Ready.</pre>
       <div class="footer"><span id="expiry"></span><button id="clear" class="text-button">Clear output</button></div>
+      <div class="file-transfer">
+        <h2>Download a file from the MGU</h2>
+        <p>Enter the absolute path of a file on the head unit. For a directory, create a .tgz archive in the terminal first. Maximum file size: 256 MiB.</p>
+        <label for="file-path">File path on the head unit</label>
+        <input id="file-path" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="/tmp/carplay-audio-analysis.tgz">
+        <div class="actions file-actions">
+          <button type="button" id="prepare-file">Prepare download</button>
+          <button type="button" id="example-file" class="secondary">CarPlay archive example</button>
+        </div>
+        <p id="file-message" role="status">A download link is valid for 60 seconds and can be used once.</p>
+        <a id="save-file" class="download-link hidden" href="#" download>Save file on phone</a>
+      </div>
     </section>
     <footer>Local network only. No cloud account or SSH private key needed on the phone.</footer>
   </main>
