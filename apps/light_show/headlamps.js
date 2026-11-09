@@ -1,12 +1,11 @@
 'use strict';
 const P = require('./protocol');
+const F = require('./flm-control');
 // Identity map from the kit's SGBD index. D9FC offsets verified in the
 // supplied FLM02_L/R PRGs: four low-beam bytes, then ten high-beam bytes.
 // Raw channel codes are deliberately not used as actuator channel numbers.
-const MODULES = [
-    { side: 'Left', address: 0x43, index: '0F26C0', name: 'FLM02_L' },
-    { side: 'Right', address: 0x44, index: '0F26D0', name: 'FLM02_R' },
-];
+const MODULES = Object.keys(F.MODULES).map((side) =>
+    Object.assign({ side: side[0].toUpperCase() + side.slice(1) }, F.MODULES[side]));
 async function read(link) {
     const results = [];
     for (const m of MODULES) {

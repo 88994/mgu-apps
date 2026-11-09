@@ -1,8 +1,52 @@
-# Light Show 0.2.2
+# Light Show 0.2.3
 
 Experimentelle Stroboskop-App für BMW MGU iDrive 7, angelehnt an
 [das Reel von bmwneva](https://www.instagram.com/reel/DfR0l0HxKNS/).
 Eigenständige Implementierung, kein Originalcode aus dem Reel.
+
+## 0.2.3: FLM02-Kanäle gezielt untersuchen (experimentell)
+
+Unter **Diagnostics → Experimental FLM02 LED channels** stehen die
+Scheinwerfermodule **FLM02_L** (`0x43`, SGBD `0F26C0`) und **FLM02_R**
+(`0x44`, `0F26D0`) zur Auswahl. Erst nach der Identitätsprüfung bietet
+die App **15 Einzelkanäle je Seite** an. Für jeden Kanal gibt es nur einen
+festen Versuch mit **20 % PWM und einer Sekunde Zeitbegrenzung**. Eine
+Daueransteuerung, ein Befehl für alle Kanäle oder eine automatische
+Kanalfolge sind nicht vorgesehen. Die tatsächliche Zuordnung zu
+Fernlicht, Abblendlicht oder anderen LEDs ist **nicht bestätigt**.
+
+Die BMW-Originaldateien `FLM02_L.prg` und `FLM02_R.prg` enthalten die
+Routine `FLM_KANAL` (RID `A54B`) mit Feldern für Kanal, PWM und Zeit.
+Den zugehörigen Stop-Befehl `31 02 A5 4B` konnten wir durch Offline-
+Ausführung der Originalroutine gegen eine reine Aufzeichnungsschnittstelle
+auf beiden Seiten bestätigen. Das **vollständige Starttelegramm** ist
+dagegen nur aus den Argumenttabellen abgeleitet und **noch nicht unabhängig
+verifiziert**. Auch eine positive Steuergeräteantwort oder ein quittierter
+Stop belegen keine tatsächliche LED-Wirkung beziehungsweise vollständige
+physische Rückgabe. Es werden keine ausdrücklichen Stellmotorbefehle gesendet;
+unbeabsichtigte Stellbewegungen durch die Scheinwerferelektronik sind dennoch
+nicht ausgeschlossen.
+
+Die App speichert vor dem Wechsel in die FLM-Diagnosesitzung eine
+Wiederherstellungsmarkierung. Nach dem Versuch wird zuerst die originale
+FLM-StopRoutine, danach die Standardsitzung angefordert. Nur wenn beides
+positiv quittiert wurde, wird die Sperre automatisch entfernt. Bei
+Fehlern bleibt sie erhalten und weitere Versuche werden gesperrt. Eine
+alte BDC-Stop-Sperre, die das Fahrzeug mit `NRC 22` nicht zurückgegeben hat,
+wird durch diesen neuen Ansteuerungsweg **nicht** umgangen. Sie darf nach
+Prüfung der normalen Fahrzeuglichter wie bisher in Diagnostics manuell
+bestätigt werden.
+
+**Erste Prüfung:** nur bei sicher abgestelltem Fahrzeug, in `P`, mit
+Zündung und ohne Personen im Lichtkegel. Nach einem alten Fehlversuch zuerst
+die normale Beleuchtung prüfen und die Sperre bewusst bestätigen. Dann
+unter Diagnostics links **oder** rechts ein einziges FLM-Kanal-Testfeld
+aufrufen, die Reaktion und ungewöhnliche Geräusche beobachten und direkt
+protokollieren. Bei Motor-/Stellgeräuschen oder unerwartetem Verhalten sofort
+**STOP** drücken und keine weiteren Tests auslösen. Vor einer Fahrt müssen
+alle vorgeschriebenen Fahrzeugleuchten normal funktionieren. Die Funktion
+ist ein **nicht fahrzeugvalidierter Diagnose-Prototyp**, keine einsatzfertige
+Light-Show-Steuerung.
 
 ## 0.2.2: Jede Außenleuchte einzeln testen
 
@@ -75,8 +119,10 @@ alten Diagnoseweg verfügbar, ist am gemeldeten G21 aber weiterhin ohne Wirkung.
 
 ## Update und erster Test
 
-1. Im MGU Store die Quelle `NamelsMissing/mgu-apps`, Kanal **main**, aktualisieren
-   und **Light Show 0.2.2** installieren.
+1. Nach Freigabe beziehungsweise Veröffentlichung von 0.2.3 im MGU Store
+   die Quelle `NamelsMissing/mgu-apps`, Kanal **main**, aktualisieren
+   und **Light Show 0.2.3** installieren. Ein lokaler Build allein ist noch
+   keine Veröffentlichung im Store.
 2. Zündung einschalten und im Stand **P** wählen. Ein laufender Motor ist keine
    Startbedingung der App.
 3. Falls noch eine Startsperre aus 0.1.1 besteht: normale Beleuchtung mit den
@@ -88,10 +134,10 @@ alten Diagnoseweg verfügbar, ist am gemeldeten G21 aber weiterhin ohne Wirkung.
 5. Die tatsächlichen Scheinwerfer beobachten. Erst wenn beide sichtbar reagieren,
    die Muster mit **Light control: Both lights – timed function (new test)** und
    **Start vehicle lights** testen.
-6. Für den Vergleich mit normaler Lichthupe unter **Diagnostics → Individual light tests**
-   zuerst **High beam left / FL_L** und **High beam right / FL_R** einzeln probieren,
-   die jeweilige Lichtwirkung und Geräusche bewerten. Nur im Stillstand, auf
-   Privatgrund, ohne Personen im Lichtkegel. Nicht während der Fahrt ausprobieren.
+6. Der alte Weg **Diagnostics → Individual light tests / 32 outputs** ist
+   am getesteten G21 weiterhin ohne sichtbare Wirkung und kann eine
+   gespeicherte BDC-Sperre auslösen. Für die neue, noch unbestätigte
+   FLM-Diagnose siehe die gesonderten Hinweise zu 0.2.3 oben.
 7. Bei ausbleibender Reaktion oder Fehler **Diagnostics** öffnen und das neue
    Protokoll mit **Save diagnostic log** speichern.
 
@@ -104,6 +150,9 @@ und startet beim Booten keine Show.
 - Zeitbegrenzte gemeinsame Leuchtenfunktion: beide zusammen, Doppel- und Dreifachblitz.
 - Getrennter alter Ausgangsweg mit sechs Links-/Rechts-Mustern für Diagnosezwecke
   sowie 32 einzelne Außenlicht-Ausgänge mit kurzer Prüfzeit und Beobachtungsprotokoll.
+- Experimenteller FLM02-Routinentest mit einem Kanal je Seite, festem PWM,
+  kurzer Dauer, explizitem Stop und Beobachtungsprotokoll. LED-Zuordnung
+  und Starttelegramm sind noch unbestätigt.
 - Auswahl Fernlicht, Tagfahrlicht, Standlicht oder Nebelscheinwerfer vorn.
   Die neue Standlichtfunktion kann auch hintere Leuchten einschließen;
   Nebelscheinwerfer müssen vorhanden sein.
@@ -122,9 +171,10 @@ bestätigter Stop-Auftrag ist zunächst eine Protokollbestätigung.
 
 ## Protokoll und Offline-Prüfung
 
-Nur BDC_G05, Adresse `0x40`, SGBD-Index `0F2680`, wird zugelassen.
-Die Identität wird vor der Ansteuerung gelesen; andere Varianten werden abgewiesen.
-Eine G21-Modellbezeichnung ersetzt diese Prüfung nicht.
+Für den bisherigen BDC-Weg wird ausschließlich BDC_G05, Adresse `0x40`,
+SGBD-Index `0F2680`, zugelassen. Für den neuen Einzelkanaltest werden
+zusätzlich die konkreten FLM02_L/R-Identitäten überprüft. Andere Varianten
+werden abgewiesen. Eine G21-Modellbezeichnung ersetzt diese Prüfung nicht.
 
 Die Telegramme wurden aus der eigenen `Ecu.zip / Ecu/BDC_G05.prg`, Revision
 36.001, ermittelt und durch Ausführung der originalen Job-Bytecodes gegen eine
@@ -146,6 +196,12 @@ ist dort dokumentiert. Dieser Interpreter ist keine App-Abhängigkeit.
 | Diagnose-Bremslicht Mitte aus (aus der Ausgangstabelle abgeleitet) | `2F E3 B5 03 23 00 C0` |
 | Alte allgemeine IO-Rückgabe, im Fahrzeug abgelehnt | `2F E3 B5 00 FF` |
 | Standardsitzung anfordern | `10 01` |
+
+Für den neuen FLM-Weg ist der **original aufgenommene Stop**
+`31 02 A5 4B` dokumentiert. Die daraus und aus der PRG-Argumenttabelle
+abgeleitete Start-Anfrage `31 01 A5 4B <KANAL> 14 01` ist **ein
+unverifiziertes Kandidatentelegramm** (Hex `14` = 20). Die Datenlage steht
+in `flm-evidence.json`; sie ersetzt keine Messung am Fahrzeug.
 
 Für `D542` sind Funktion und Zeit jeweils zwei Bytes mit höchstwertigem Byte
 zuerst; die Zeit ist in Hundertstelsekunden codiert. Es erfolgt kein automatischer

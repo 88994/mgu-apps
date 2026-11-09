@@ -80,7 +80,9 @@ def main():
         'Store catalog format: https://github.com/robertnisipeanu/mgu-store/blob/main/docs/PUBLISHING.md\n'
         'Reference analysis only: https://github.com/emdzej/ediabasx (PolyForm Noncommercial 1.0.0).\n'
         'EdiabasX is not bundled or used by the installed app.\n'
-        'No BMW SDK or PRG is included. Legacy IO vehicle test reported no physical high-beam effect; the new timed-function route has not been vehicle verified.\n')
+        'No BMW SDK or PRG is included. Legacy BDC IO testing produced no visible lamp effect and NRC22 during release.\n'
+        'The D542 timed route produced visible lamps with reported motor noise; its exact physical effect and automatic leveling are not verified.\n'
+        'FLM02 StopRoutine was captured from original BMW PRGs offline; FLM channel START framing and physical LED mapping remain unverified.\n')
     # Verify install catalog, archive identity, syntax-independent layout and SDK omission.
     with tarfile.open(fileobj=io.BytesIO(artifact), mode='r:gz') as tar:
         names = tar.getnames()

@@ -12,6 +12,7 @@ const Guard = require(path.join(app, 'guard'));
 const Journal = require(path.join(app, 'journal'));
 const Engine = require(path.join(app, 'engine'));
 const DiagnosticOutputs = require(path.join(app, 'diagnostic-outputs'));
+const F = require(path.join(app, 'flm-control'));
 // Test the transport as packaged, including the project's actual TASU frame
 // decoder and reply correlator (build.py light_show before running this file).
 const Link = require(path.join(root, 'dist', 'light_show', 'source', 'javascript', 'link'));
@@ -42,6 +43,14 @@ function rig(o) {
         keepalive: async () => { calls.push('keepalive'); if (o.keepFail) throw Error('keepalive timed out'); },
         release: async () => { calls.push('release'); if (o.releaseFail) throw Error('release timed out'); },
         defaultSession: async () => { calls.push('default'); if (o.defaultFail) throw Error('default timed out'); },
+        identifyFlm: async (side) => { calls.push(['flmIdentify', side]); if (o.badFlmIdentity) throw Error('Unsupported FLM'); },
+        flmSession: async (side) => { calls.push(['flmSession', side]); if (o.flmSessionFail) throw Error('FLM session refused'); },
+        flmStart: async (side, channel) => {
+            calls.push(['flmStart', side, channel]); if (o.onFlmStart) await o.onFlmStart(side, channel, r);
+            if (o.flmStartFail) throw Error('FLM start refused');
+        },
+        flmStop: async (side) => { calls.push(['flmStop', side]); if (o.flmStopFail) throw Error('FLM stop refused'); },
+        flmDefaultSession: async (side) => { calls.push(['flmDefault', side]); if (o.defaultFail) throw Error('FLM default refused'); },
     };
     const engine = new Engine({ link, journal, guard: { reason: () => state.block }, now: () => clock,
         sleep: async (ms) => { clock += ms; if (o.onSleep) await o.onSleep(r); }, changed: () => {}, log: { info() {}, warn() {} } });
@@ -360,7 +369,7 @@ test('Headlamp transport rejects actuator requests and targets reads to the sele
     const r = await tasu((args, emit) => {
         setImmediate(() => emit(args.targetAddress, [0x62, 0xF1, 0x50, 0x0F, 0x26, 0xC0])); return 'NO_ERROR';
     });
-    await assert.rejects(r.link.request(0x2E, [0xD5, 0x42], false, 0x43), /Unsupported headlamp read/);
+    await assert.rejects(r.link.request(0x2E, [0xD5, 0x42], false, 0x43), /Unsupported FLM diagnostic/);
     assert.strictEqual(r.requests.length, 0);
     await r.link.request(0x22, [0xF1, 0x50], false, 0x43);
     assert.strictEqual(r.requests[0].targetAddress, 0x43);
@@ -448,6 +457,90 @@ test('Real TASU transport serializes third-brake-light control via BDC, not a gu
     await r.link.set(0x23, 1); await r.link.set(0x23, 0);
     assert(r.requests.every((x) => x.targetAddress === 0x40 && x.serviceID === 0x2F));
     assert.deepStrictEqual(Array.from(r.requests[0].udsData), [0xE3, 0xB5, 3, 0x23, 1, 0xC0]);
+});
+
+test('FLM02 OEM routine uses only the bounded channel START candidate and captured StopRoutine', () => {
+    const spec = require(path.join(app, 'app.json'));
+    assert.strictEqual(spec.version, '0.2.3');
+    assert.deepStrictEqual(F.start(7), [0x01, 0xA5, 0x4B, 0x07, 20, 1]);
+    assert.deepStrictEqual(F.stop(), [0x02, 0xA5, 0x4B]);
+    assert(F.isPermittedRoutine(F.start(15)) && F.isPermittedRoutine(F.stop()));
+    for (const ch of [0, -1, 16, 255, '7', 0.5]) assert.throws(() => F.start(ch));
+    for (const bytes of [[1, 0xA5, 0x4B, 7, 20, 255], [1, 0xA5, 0x4B, 0, 20, 1],
+        [1, 0xA5, 0x4B, 7, 100, 1], [2, 0xA5, 0x4B, 7], [1, 0xD9, 0xFD]])
+        assert.strictEqual(F.isPermittedRoutine(bytes), false);
+});
+test('FLM channel menu exposes exactly 15 individually selectable channels and both sides', () => {
+    const spec = require(path.join(app, 'app.json'));
+    const flm = spec.screens.find((s) => s.name === 'FLM_CHANNELS');
+    assert(flm);
+    const ids = flm.items.map((i) => i[1]).filter((s) => s && s.startsWith('BTN_FLM_CH_'));
+    assert.strictEqual(ids.length, 15); assert.strictEqual(new Set(ids).size, 15);
+    assert(spec.screens.find((s) => s.name === 'FLM_INDEX').items.some((i) => i[1] === 'BTN_FLM_LEFT'));
+});
+test('FLM test validates BDC and headlamp identity before saving recovery or sending any control', async () => {
+    const badBdc = rig({ badIdentity: true }); await badBdc.engine.testFlm('left', 7);
+    assert.deepStrictEqual(badBdc.calls, ['identify']);
+    const badFlm = rig({ badFlmIdentity: true }); await badFlm.engine.testFlm('right', 8);
+    assert.deepStrictEqual(badFlm.calls, ['identify', ['flmIdentify', 'right']]);
+    const badChannel = rig(); await badChannel.engine.testFlm('left', 0);
+    assert.deepStrictEqual(badChannel.calls, []);
+});
+test('One-second FLM LED pulse stops with OEM StopRoutine, returns default and clears saved lock', async () => {
+    for (const side of ['left', 'right']) {
+        const r = rig(); const began = r.now(); await r.engine.testFlm(side, 7);
+        assert.strictEqual(r.now() - began, 1000);
+        assert.deepStrictEqual(r.calls, ['identify', ['flmIdentify', side], 'mark',
+            ['flmSession', side], ['flmStart', side, 7], ['flmStop', side], ['flmDefault', side], 'clear']);
+        assert.strictEqual(r.journal.pending(), false);
+        assert.strictEqual(r.engine.stopConfirmed, true); assert.strictEqual(r.engine.releaseConfirmed, false);
+        assert(!r.calls.includes('release') && !r.calls.includes('session'));
+    }
+});
+test('FLM STOP while pulse is in flight waits then requests only OEM stop and default', async () => {
+    let unlock, entered; const reached = new Promise((r) => { entered = r; });
+    const r = rig({ onFlmStart: () => new Promise((resolve) => { unlock = resolve; entered(); }) });
+    const started = r.engine.testFlm('left', 3); await reached;
+    const stop = r.engine.stop('STOP pressed'); await tick();
+    assert(!r.calls.some((c) => Array.isArray(c) && c[0] === 'flmStop'));
+    unlock(); await Promise.all([started, stop]);
+    assert.deepStrictEqual(r.calls.slice(-3), [['flmStop', 'left'], ['flmDefault', 'left'], 'clear']);
+    assert.strictEqual(r.journal.pending(), false);
+});
+test('FLM rejected START still attempts StopRoutine and does not switch to BDC fallback', async () => {
+    const r = rig({ flmStartFail: true }); await r.engine.testFlm('right', 12);
+    assert.deepStrictEqual(r.calls.slice(-3), [['flmStop', 'right'], ['flmDefault', 'right'], 'clear']);
+    assert.strictEqual(r.engine.state, 'ERROR');
+    assert(!r.calls.includes('release'));
+});
+test('FLM failed StopRoutine retains recovery lock and recovery retries its own OEM stop only', async () => {
+    const r = rig({ flmStopFail: true }); await r.engine.testFlm('left', 5);
+    assert.strictEqual(r.journal.pending(), true);
+    assert.strictEqual(r.engine.stopConfirmed, false);
+    assert(r.engine.note.includes('FLM StopRoutine pending'));
+    const recovery = rig({ pending: true, record: { route: 'flm', side: 'right', channel: 9 } });
+    await recovery.engine.stop();
+    assert.deepStrictEqual(recovery.calls, ['identify', ['flmIdentify', 'right'], ['flmStop', 'right'],
+        ['flmDefault', 'right'], 'clear']);
+});
+test('Real TASU FLM transport requires verified module and refuses unbounded actuator requests', async () => {
+    const r = await tasu((args, emit) => {
+        let reply;
+        const d = Array.from(args.udsData);
+        if (args.serviceID === 0x22) reply = [0x62, 0xF1, 0x50, 0x0F, 0x26, 0xC0];
+        else if (args.serviceID === 0x10) reply = [0x50, d[0]];
+        else reply = [0x71, d[0], 0xA5, 0x4B];
+        setImmediate(() => emit(args.targetAddress, reply)); return 'NO_ERROR';
+    });
+    await assert.rejects(r.link.flmStart('left', 7), /not identified/);
+    assert.strictEqual(r.requests.length, 0);
+    await r.link.identifyFlm('left'); await r.link.flmSession('left');
+    await r.link.flmStart('left', 7); await r.link.flmStop('left'); await r.link.flmDefaultSession('left');
+    assert(r.requests.every((r) => r.targetAddress === 0x43));
+    assert.deepStrictEqual(r.requests.map((r) => r.serviceID), [0x22, 0x10, 0x31, 0x31, 0x10]);
+    assert.deepStrictEqual(Array.from(r.requests[2].udsData), F.start(7));
+    assert.deepStrictEqual(Array.from(r.requests[3].udsData), F.stop());
+    await assert.rejects(r.link.request(0x31, [1, 0xA5, 0x4B, 7, 20, 255], false, 0x43), /Unsupported FLM diagnostic/);
 });
 
 (async () => {

@@ -2,6 +2,7 @@
 const P = require('./protocol');
 const Headlamps = require('./headlamps');
 const DiagnosticOutputs = require('./diagnostic-outputs');
+const F = require('./flm-control');
 
 // One serialized conversation. Stop sets the cancellation flag immediately;
 // a possibly accepted in-flight command must finish before stop is sent.
@@ -14,7 +15,8 @@ class Engine {
         this.state = 'IDLE'; this.note = 'Ready'; this.mask = [0, 0];
         this.sent = 0; this.stepMs = 0; this.run = null; this.cancel = false;
         this.releaseConfirmed = false; this.stopRequested = false; this.outputSamples = []; this.originalFault = null;
-        this.control = { route: 'digital', lights: null, outputId: null }; this.stopConfirmed = false; this.headlamps = [];
+        this.control = { route: 'digital', lights: null, outputId: null, side: null, channel: null };
+        this.stopConfirmed = false; this.headlamps = [];
     }
     status() {
         return { state: this.state, note: this.note, mask: this.mask.slice(), sent: this.sent,
@@ -93,6 +95,12 @@ class Engine {
         // One short pulse. There is no continuous ON or adjustable duration.
         return this._start({ route: 'single', outputId: id, seconds: 1, tempo: 750 });
     }
+    testFlm(side, channel) {
+        try { F.moduleFor(side); F.channelNumber(channel); }
+        catch (e) { this.update('ERROR', e.message); return Promise.resolve(); }
+        // One 20%-PWM, one-second routine only. No adjustable/indefinite control.
+        return this._start({ route: 'flm', side, channel, seconds: F.SECONDS, tempo: F.SECONDS * 1000 });
+    }
     _start(config) {
         const reason = this.guard.reason();
         if (this.run) return this.run;
@@ -100,9 +108,11 @@ class Engine {
         if (this.journal.pending()) { this.update('ERROR', 'Saved stop lock pending - use STOP or Diagnostics'); return Promise.resolve(); }
         this.cancel = false; this.stopRequested = false; this.stopReason = null; this.releaseConfirmed = false;
         this.stopConfirmed = false; this.control = { route: config.route || 'digital',
-            lights: config.lights || null, outputId: config.route === 'single' ? config.outputId : null };
+            lights: config.lights || null, outputId: config.route === 'single' ? config.outputId : null,
+            side: config.route === 'flm' ? config.side : null,
+            channel: config.route === 'flm' ? config.channel : null };
         this.sent = 0; this.stepMs = 0; this.mask = [0, 0]; this.outputSamples = []; this.originalFault = null;
-        this.update('STARTING', 'Checking BDC_G05');
+        this.update('STARTING', config.route === 'flm' ? 'Checking BDC and FLM02 identity' : 'Checking BDC_G05');
         let resolve;
         this.run = new Promise((r) => { resolve = r; });
         this._play(config).then(() => { this.run = null; resolve(); }, (e) => {
@@ -121,13 +131,15 @@ class Engine {
         try {
             await this.link.identify();
             if (!this.allowed()) return;
+            if (c.route === 'flm') { await this.link.identifyFlm(c.side); if (!this.allowed()) return; }
             // A durable marker is written BEFORE any request that can change the
             // session/lamps. If persistence fails, no control request is sent.
             this.journal.mark(this.link.index, this.control); dirty = true;
-            await this.link.session();
-            await this.sampleOutputs('Before control');
+            if (c.route === 'flm') await this.link.flmSession(c.side);
+            else { await this.link.session(); await this.sampleOutputs('Before control'); }
             let afterSampled = false;
             if (!this.allowed()) return;
+            if (c.route === 'flm') { await this._flmPulse(c); return; }
             if (c.route === 'timed') { await this._timedLoop(c); return; }
             if (c.route === 'single') { await this._singlePulse(c); return; }
             const pair = P.PAIRS[c.lights], pattern = P.PATTERNS[c.pattern].steps;
@@ -163,7 +175,9 @@ class Engine {
             if (dirty) {
                 const released = await this._release();
                 if (released) this.update(fault ? 'ERROR' : 'IDLE', fault || this.stopReason
-                    || (c.route === 'timed' ? 'Timed function stopped; physical effect not verified' : 'BDC IO return acknowledged; physical effect not verified'));
+                    || (c.route === 'timed' ? 'Timed function stopped; physical effect not verified'
+                        : c.route === 'flm' ? 'FLM StopRoutine acknowledged; physical lamp state not verified'
+                        : 'BDC IO return acknowledged; physical effect not verified'));
             } else this.update(fault ? 'ERROR' : 'IDLE', fault || this.stopReason || 'Stopped before lamp control');
             this.stopReason = null;
         }
@@ -179,6 +193,17 @@ class Engine {
             await this.sleep(Math.min(25, c.tempo - elapsed));
         }
         // The finally path always attempts OFF, OEM release and default session.
+    }
+    async _flmPulse(c) {
+        if (!this.allowed()) return;
+        this.deadline = this.now() + F.SECONDS * 1000;
+        this.update('RUNNING', 'Experimental ' + c.side + ' FLM02 channel ' + c.channel +
+            ' / ' + F.PWM + '% / ' + F.SECONDS + 's (not verified)');
+        await this.link.flmStart(c.side, c.channel); this.sent++;
+        // ECU routine includes a finite one-second time; no reads or keepalives
+        // are inserted before the dedicated OEM StopRoutine in finally.
+        for (let elapsed = 0; elapsed < F.SECONDS * 1000 && this.allowed(); elapsed += 25)
+            await this.sleep(Math.min(25, F.SECONDS * 1000 - elapsed));
     }
     async _timedLoop(c) {
         const pat = P.pattern(c), fn = P.FUNCTIONS[c.lights];
@@ -224,11 +249,17 @@ class Engine {
             await this.link.identify();
             const saved = this.journal.value;
             if (saved) {
-                if (saved.corrupted || (saved.route && ['timed', 'digital', 'single'].indexOf(saved.route) < 0)) throw new Error('Invalid recovery record; check normal lights first');
+                if (saved.corrupted || (saved.route && ['timed', 'digital', 'single', 'flm'].indexOf(saved.route) < 0)) throw new Error('Invalid recovery record; check normal lights first');
                 if (saved.route === 'timed') P.timedControl(saved.lights, 0);
                 if (saved.route === 'single') DiagnosticOutputs.get(saved.outputId);
+                if (saved.route === 'flm') {
+                    F.moduleFor(saved.side); F.channelNumber(saved.channel);
+                    await this.link.identifyFlm(saved.side);
+                }
                 this.control = { route: saved.route || 'digital', lights: saved.lights || null,
-                    outputId: saved.route === 'single' ? saved.outputId : null };
+                    outputId: saved.route === 'single' ? saved.outputId : null,
+                    side: saved.route === 'flm' ? saved.side : null,
+                    channel: saved.route === 'flm' ? saved.channel : null };
             }
             if (await this._release()) this.update('IDLE', this.control.route === 'timed' ? 'Timed stop acknowledged' : 'OEM IO return acknowledged');
         } catch (e) { this.update('ERROR', 'Saved stop lock pending: ' + String(e.message || e)); }
@@ -243,18 +274,23 @@ class Engine {
             catch (e) { error = 'Individual OFF: ' + (e.message || String(e)); }
         }
         try {
-            if (this.control.route === 'timed') await this.link.timed(this.control.lights, 0);
+            if (this.control.route === 'flm') await this.link.flmStop(this.control.side);
+            else if (this.control.route === 'timed') await this.link.timed(this.control.lights, 0);
             else await this.link.release();
             released = true;
         } catch (e) { error = error || e.message || String(e); }
-        try { await this.link.defaultSession(); } catch (e) { error = error || e.message || String(e); }
+        try {
+            if (this.control.route === 'flm') await this.link.flmDefaultSession(this.control.side);
+            else await this.link.defaultSession();
+        } catch (e) { error = error || e.message || String(e); }
         this.mask = [0, 0]; this.stopConfirmed = released && !error;
-        this.releaseConfirmed = this.control.route !== 'timed' && released;
+        this.releaseConfirmed = this.control.route !== 'timed' && this.control.route !== 'flm' && released;
         if (!error && released) {
             try { this.journal.clear(); } catch (e) { error = 'Could not clear recovery marker: ' + e.message; }
         }
         if (error) { this.update('ERROR', (this.originalFault ? 'Start/show: ' + this.originalFault + ' | ' : '')
-            + (this.control.route === 'timed' ? 'Timed stop pending: ' : 'OEM release pending: ') + error); return false; }
+            + (this.control.route === 'timed' ? 'Timed stop pending: '
+                : this.control.route === 'flm' ? 'FLM StopRoutine pending: ' : 'OEM release pending: ') + error); return false; }
         return true;
     }
 }
