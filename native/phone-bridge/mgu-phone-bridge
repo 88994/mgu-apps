@@ -1,3 +1,16 @@
 #!/usr/bin/env node
 'use strict';
-require('./server').start().catch((err) => { console.error('[phone-bridge] fatal:', err.stack || err); process.exit(1); });
+const bridge = require('./server').makeBridge();
+let exiting = false;
+function shutdown() {
+    if (exiting) return;
+    exiting = true;
+    const fallback = setTimeout(() => process.exit(1), 18000);
+    bridge.stop().then(() => { clearTimeout(fallback); process.exit(0); }, (error) => {
+        console.error('[phone-bridge] shutdown:', error.stack || error);
+        process.exit(1);
+    });
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+bridge.start().catch((err) => { console.error('[phone-bridge] fatal:', err.stack || err); shutdown(); });

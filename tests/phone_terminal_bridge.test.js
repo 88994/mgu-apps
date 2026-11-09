@@ -29,7 +29,7 @@ function httpRequest(port, method, endpoint, body, extra) {
 
 async function test() {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mgu-bridge-test-'));
-    const bridge = makeBridge({ dataDir: dir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1' });
+    const bridge = makeBridge({ dataDir: dir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1', firewall: false });
     const ports = await bridge.start();
     const controlKey = fs.readFileSync(path.join(dir, 'phone-bridge.key'), 'utf8').trim();
     const local = (method, endpoint, key) => httpRequest(ports.localPort, method, endpoint, null, { 'X-Bridge-Key': key === undefined ? controlKey : key });
@@ -83,7 +83,7 @@ async function test() {
 async function testLateInstall() {
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'mgu-bridge-late-'));
     const dataDir = path.join(parent, 'newly-installed-app');
-    const bridge = makeBridge({ dataDir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1' });
+    const bridge = makeBridge({ dataDir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1', firewall: false });
     await bridge.start();
     try {
         fs.mkdirSync(dataDir);
@@ -108,7 +108,7 @@ async function testAppOwnedKey() {
         assert.strictEqual(firstKey.length, 64, 'app should provision its own 256-bit control key');
         assert.strictEqual(localKey(dir), firstKey, 'app should retain the existing key');
         assert.strictEqual(fs.statSync(path.join(dir, 'phone-bridge.key')).mode & 0o077, 0, 'key must not be group/world readable');
-        const bridge = makeBridge({ dataDir: dir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1' });
+        const bridge = makeBridge({ dataDir: dir, localPort: 0, publicPort: 0, publicHost: '127.0.0.1', firewall: false });
         const ports = await bridge.start();
         try {
             const response = await httpRequest(ports.localPort, 'GET', '/local/status', null, { 'X-Bridge-Key': firstKey });

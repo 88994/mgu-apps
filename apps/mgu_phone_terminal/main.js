@@ -72,11 +72,18 @@ mgu.run({
 
             const addresses = info && info.addresses || [];
             const selected = addresses[candidate] || null;
-            const alive = info && info.state === 'pairing' && token && info.expiresAt > Date.now();
+            const network = info && info.firewall || null;
+            const firewallError = network && network.error || '';
+            const bridgeReady = !!(network && network.ready);
+            const pairing = info && info.state === 'pairing' && token && info.expiresAt > Date.now();
+            const alive = pairing && bridgeReady && selected && selected.interface === 'wlan_bridge';
             const url = alive && selected ? makeUrl(selected.ip, token) : '';
-            const stateText = err ? 'BRIDGE ERROR' : alive ? 'PAIRING READY' : info && info.state === 'active' ? 'PHONE CONNECTED' : info ? 'ACCESS DISABLED' : 'BRIDGE NOT AVAILABLE';
+            const stateText = err ? 'BRIDGE ERROR' : firewallError ? 'FIREWALL ERROR'
+                : info && !network ? 'BRIDGE UPDATE REQUIRED' : alive ? 'PAIRING READY'
+                : pairing ? 'NETWORK NOT READY' : info && info.state === 'active' ? 'PHONE CONNECTED'
+                : info ? 'ACCESS DISABLED' : 'BRIDGE NOT AVAILABLE';
             cv.roundRect(70, 156, 680, 54, 12, '#0b172b');
-            cv.text(stateText, 92, 194, 27, err ? C.red : alive || info && info.state === 'active' ? C.green : C.amber, { font: 'bold' });
+            cv.text(stateText, 92, 194, 27, err || firewallError ? C.red : alive || info && info.state === 'active' ? C.green : C.amber, { font: 'bold' });
 
             if (err) {
                 cv.text(err.slice(0, 48), 70, 254, 23, C.red);
@@ -89,12 +96,18 @@ mgu.run({
                             ? 'Key permission issue: update Bridge tool and restart iDrive.'
                             : 'Check the Bridge tool version and restart the app.';
                 cv.text(hint, 70, 335, 20, C.muted);
+            } else if (firewallError) {
+                cv.text(firewallError.slice(0, 54), 70, 254, 22, C.red);
+                if (firewallError.length > 54) cv.text(firewallError.slice(54, 106), 70, 285, 21, C.red);
+                cv.text('Bridge cannot open TCP 18890 on wlan_bridge.', 70, 333, 20, C.muted);
+                cv.text('Check nft firewall support / background tool.', 70, 371, 20, C.muted);
             } else if (info) {
                 cv.text('Address: ' + (selected ? selected.ip + ':18890  (' + selected.interface + ')' : 'No reachable IPv4 interface'), 70, 255, 26, C.white);
-                cv.text('Network: phone must reach this IP directly', 70, 295, 23, C.muted);
+                cv.text('Firewall: ' + (bridgeReady ? 'OPEN on wlan_bridge' : network ? 'opening / awaiting Wi-Fi' : 'update Bridge tool'), 70, 295, 23, C.muted);
                 cv.text('Pairing: 3 min  |  Session: 15 min  |  One phone', 70, 332, 22, C.muted);
                 if (info.state === 'active') cv.text('Paired. Revoke access after use.', 70, 373, 24, C.green);
                 else if (alive) cv.text('Scan QR with your phone camera.', 70, 373, 24, C.green);
+                else if (pairing) cv.text('Connect via DIRECT-BMW Wi-Fi; QR unlocks when ready.', 70, 373, 20, C.amber);
                 else cv.text('Press New session to show your private QR code.', 70, 373, 22, C.amber);
             }
 

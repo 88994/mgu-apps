@@ -7,6 +7,7 @@ const http = require('http');
 const os = require('os');
 const crypto = require('crypto');
 const child = require('child_process');
+const { makeFirewall } = require('./firewall');
 
 const APP_ID = 'mgu_phone_terminal';
 const DEFAULT_LOCAL_PORT = 18891;
@@ -54,7 +55,7 @@ function addresses() {
     Object.keys(nics).forEach((name) => (nics[name] || []).forEach((item) => {
         if ((item.family !== 'IPv4' && item.family !== 4) || item.internal || !item.address) return;
         if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(item.address)) return;
-        const score = /p2p|wlan|wifi|wlp|ap0/i.test(name) ? 0 : /^eth|enp|usb|rndis|br/i.test(name) ? 1 : 2;
+        const score = name === 'wlan_bridge' ? -10 : /p2p|wlan|wifi|wlp|ap0/i.test(name) ? 0 : /^eth|enp|usb|rndis|br/i.test(name) ? 1 : 2;
         out.push({ ip: item.address, interface: name, score: score + (item.address.indexOf('169.254.') === 0 ? 10 : 0) });
     }));
     return out.sort((a, b) => a.score - b.score || a.interface.localeCompare(b.interface)).map((x) => ({ ip: x.ip, interface: x.interface }));
@@ -112,10 +113,31 @@ function makeBridge(options) {
     options = options || {};
     const localPort = options.localPort === undefined ? DEFAULT_LOCAL_PORT : options.localPort;
     const publicPort = options.publicPort === undefined ? DEFAULT_PUBLIC_PORT : options.publicPort;
+    const firewall = options.firewall === false ? null : options.firewall || makeFirewall({ port: publicPort });
     const now = options.now || Date.now;
     let controlKey = null, pairToken = null, pairUntil = 0;
     let sessionToken = null, sessionUntil = 0, running = false, runningProc = null, failureCount = 0, blockUntil = 0;
-    let localServer, publicServer, keyPoll, provisionError = 'waiting for app registration';
+    let localServer, publicServer, keyPoll, firewallPoll, provisionError = 'waiting for app registration';
+    let firewallReady = false, firewallError = '', firewallQueue = Promise.resolve(), lastFirewallCheck = 0;
+
+    function syncFirewall() {
+        // Serialize nft mutations: revoke/stop must run after an outstanding
+        // accept-rule insertion, including when the MGU reloads its ruleset.
+        firewallQueue = firewallQueue.then(async () => {
+            const needed = !closed();
+            if (firewall) {
+                if (needed) await firewall.ensure();
+                else await firewall.close();
+            }
+            firewallReady = needed;
+            firewallError = '';
+        }).catch((error) => {
+            firewallReady = false;
+            firewallError = error && error.message || String(error);
+            console.warn('[phone-bridge] firewall: ' + firewallError);
+        });
+        return firewallQueue;
+    }
 
     function terminateCommand() {
         if (!runningProc) return;
@@ -142,7 +164,9 @@ function makeBridge(options) {
     function revoke() { terminateCommand(); pairToken = null; pairUntil = 0; sessionToken = null; sessionUntil = 0; }
     function status() {
         closed();
-        return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0, addresses: addresses(), port: publicPort, version: '0.1.2' };
+        return { state: sessionToken ? 'active' : pairToken ? 'pairing' : 'closed', expiresAt: sessionToken ? sessionUntil : pairToken ? pairUntil : 0,
+            addresses: addresses(), port: publicPort, version: '0.1.3',
+            firewall: { ready: firewallReady && !!(sessionToken || pairToken), error: firewallError, interface: 'wlan_bridge' } };
     }
 
     function local(req, res) {
@@ -151,11 +175,14 @@ function makeBridge(options) {
         if (!same(req.headers['x-bridge-key'], key)) return send(res, 403, { error: 'Forbidden' });
         const route = String(req.url || '').split('?')[0];
         if (req.method === 'GET' && route === '/local/status') return send(res, 200, status());
-        if (req.method === 'POST' && route === '/local/stop') { revoke(); return send(res, 200, status()); }
+        if (req.method === 'POST' && route === '/local/stop') { revoke(); syncFirewall(); return send(res, 200, status()); }
         if (req.method === 'POST' && route === '/local/start') {
             revoke();
             pairToken = token();
             pairUntil = now() + PAIR_MS;
+            firewallReady = false;
+            firewallError = '';
+            syncFirewall();
             return send(res, 200, Object.assign(status(), { token: pairToken }));
         }
         send(res, 404, { error: 'Not found' });
@@ -234,7 +261,7 @@ function makeBridge(options) {
             });
         }
         if (!hasSession(req)) return send(res, 401, { error: 'Session ended. Start a new session on iDrive.' });
-        if (route === '/api/logout') { revoke(); return send(res, 200, { ok: true }, { 'Set-Cookie': 'mgu_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' }); }
+        if (route === '/api/logout') { revoke(); syncFirewall(); return send(res, 200, { ok: true }, { 'Set-Cookie': 'mgu_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' }); }
         if (route === '/api/exec') return readBody(req, (e, body) => {
             if (e) return send(res, 400, { error: e.message });
             command(req, res, body && body.command);
@@ -255,6 +282,16 @@ function makeBridge(options) {
         await listen(localServer, localPort, '127.0.0.1');
         try { await listen(publicServer, publicPort, options.publicHost || '0.0.0.0'); }
         catch (e) { localServer.close(); throw e; }
+        // Remove any tagged rule left by a previous crash/restart. The daemon
+        // does not expose the mobile port until a new pairing is requested.
+        await syncFirewall();
+        firewallPoll = setInterval(() => {
+            const needed = !closed();
+            if ((!needed && firewallReady) || (needed && (!firewallReady || now() - lastFirewallCheck >= 30000))) {
+                lastFirewallCheck = now();
+                syncFirewall();
+            }
+        }, 5000);
         // The Store installs this required tool before the OAP app. Provision
         // its control key as soon as the app directory appears, without needing
         // an unauthenticated HTTP provisioning request.
@@ -265,6 +302,8 @@ function makeBridge(options) {
     async function stop() {
         revoke();
         if (keyPoll) { clearInterval(keyPoll); keyPoll = null; }
+        if (firewallPoll) { clearInterval(firewallPoll); firewallPoll = null; }
+        await syncFirewall();
         return Promise.all([localServer, publicServer].filter(Boolean).map((server) => new Promise((resolve) => server.close(resolve))));
     }
     return { start, stop, status };
