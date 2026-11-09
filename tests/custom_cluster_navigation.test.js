@@ -8,6 +8,12 @@ const vm = require('vm');
 
 const root = path.join(__dirname, '..', 'apps', 'custom_cluster');
 const spec = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
+const icon = fs.readFileSync(path.join(root, 'icon.png'));
+const referenceIcon = fs.readFileSync(path.join(__dirname, '..', 'apps', 'g21_wheelheat', 'icon.png'));
+assert.strictEqual(icon.subarray(1, 4).toString('ascii'), 'PNG', 'Custom Cluster must ship a PNG icon');
+assert.strictEqual(icon.readUInt32BE(16), referenceIcon.readUInt32BE(16), 'BMW app icon width must match peer apps');
+assert.strictEqual(icon.readUInt32BE(20), referenceIcon.readUInt32BE(20), 'BMW app icon height must match peer apps');
+assert.strictEqual(icon.readUInt32BE(16), 140, 'ID7 installed-app tile should be 140px');
 assert.deepStrictEqual(spec.screens.map((s) => s.name), ['MAIN', 'DIAGNOSTICS', 'QR_REPORT']);
 for (const screen of spec.screens) {
     const ids = screen.buttons.map((b) => b[0]);

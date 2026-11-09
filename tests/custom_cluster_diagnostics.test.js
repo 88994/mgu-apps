@@ -85,7 +85,7 @@ assert.strictEqual(altRenderer.effects[0].target, 'panel201');
 altCluster.close();
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluster-qr-test-'));
-const ctx = { dataDir: tempDir, spec: { version: '0.5.4' } };
+const ctx = { dataDir: tempDir, spec: { version: '0.5.5' } };
 const testReport = QR.report(ctx, cluster, 'auto', 'none');
 assert.ok(testReport.pages.length > 0);
 const payloads = testReport.pages.map((page, idx) => {

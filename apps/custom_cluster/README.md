@@ -1,6 +1,14 @@
-# Custom Cluster 0.5.4 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.5 — BMW G21 / MGU iDrive 7
 
 **Experimental. Not validated on a real car. No authorization for driving with a replaced speedometer.**
+
+## 0.5.5: Correct icon dimensions
+
+The previous 0.5.4 icon was a 256×256 PNG. The ID7 installed-app tiles use 140×140 PNGs
+in the other apps, and the 256px image was drawn too large on the MGU, overlapping the
+"Custom Cluster" text and hiding the focus frame. Both the SVG source and PNG export
+are now exactly **140×140**, with a small margin inside the image. The package and Store
+versions were advanced so the corrected icon is included in a fresh installation.
 
 ## 0.5.4: HMI navigation and parking-test diagnostics
 
