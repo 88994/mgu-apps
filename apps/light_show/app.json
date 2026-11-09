@@ -2,7 +2,7 @@
   "id": "light_show",
   "title": "Light Show",
   "description": "Experimental ID7 light controller: timed BMW light functions for both lights together, a bounded 2-second test, BDC readback and explicit stop. Legacy digital-output route retained for diagnostics; no physical effect was observed with it on the reported G21.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "vendor": "custom",
   "loggingId": "OAL9",
   "iconGlyph": "LS",
@@ -102,6 +102,11 @@
           "button",
           "BTN_DIAG_IDENTIFY",
           "Check BDC connection"
+        ],
+        [
+          "button",
+          "BTN_HEADLAMPS",
+          "Read headlamp modules / LED mapping"
         ],
         [
           "button",

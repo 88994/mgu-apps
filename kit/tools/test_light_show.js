@@ -336,6 +336,43 @@ test('Real TASU transport sends timed function and zero-duration stop with match
     assert.deepStrictEqual(Array.from(r.requests[1].udsData), [0xD5, 0x42, 0, 5, 0, 0]);
 });
 
+test('Headlamp inspection only reads identities and known-variant mapping, preserving raw codes', async () => {
+    const Headlamps = require(path.join(app, 'headlamps')); const calls = [];
+    const rows = await Headlamps.read({ request: async (sid, data, release, address) => {
+        calls.push([sid, data, address]);
+        if (data[0] === 0xF1) return [0x62, 0xF1, 0x50, 0x0F, 0x26, address === 0x43 ? 0xC0 : 0xD0];
+        return [0x62, 0xD9, 0xFC].concat(Array.from({ length: 14 }, (_, i) => i));
+    } });
+    assert.strictEqual(calls.length, 4); assert(calls.every((c) => c[0] === 0x22));
+    assert.strictEqual(rows[0].highBeamRaw, '04 05 06 07 08 09 0A 0B 0C 0D');
+    assert.strictEqual(rows[1].name, 'FLM02_R');
+});
+test('Unknown headlamp identities receive no mapping read or control command', async () => {
+    const Headlamps = require(path.join(app, 'headlamps')); const calls = [];
+    const rows = await Headlamps.read({ request: async (sid, data, release, address) => {
+        calls.push([sid, data, address]); return [0x62, 0xF1, 0x50, 0, 0, 1];
+    } });
+    assert.strictEqual(calls.length, 2); assert(calls.every((c) => c[0] === 0x22 && c[1][0] === 0xF1));
+    assert(rows.every((r) => !r.highBeamRaw && r.note.includes('not yet mapped')));
+});
+test('Headlamp transport rejects actuator requests and targets reads to the selected module', async () => {
+    const r = await tasu((args, emit) => {
+        setImmediate(() => emit(args.targetAddress, [0x62, 0xF1, 0x50, 0x0F, 0x26, 0xC0])); return 'NO_ERROR';
+    });
+    await assert.rejects(r.link.request(0x2E, [0xD5, 0x42], false, 0x43), /Unsupported headlamp read/);
+    assert.strictEqual(r.requests.length, 0);
+    await r.link.request(0x22, [0xF1, 0x50], false, 0x43);
+    assert.strictEqual(r.requests[0].targetAddress, 0x43);
+});
+test('Headlamp inspection is blocked while moving and preserves a pending recovery marker', async () => {
+    const r = rig({ pending: true }); r.state.block = 'Moving'; await r.engine.inspectHeadlamps();
+    assert.deepStrictEqual(r.calls, []); assert.strictEqual(r.journal.pending(), true);
+    r.state.block = null; r.link.request = async () => [0x62, 0xF1, 0x50, 0, 0, 1];
+    await r.engine.inspectHeadlamps(); assert.strictEqual(r.engine.headlamps.length, 2);
+    assert.strictEqual(r.journal.pending(), true); assert.strictEqual(r.engine.state, 'BLOCKED');
+    assert.deepStrictEqual(r.calls, []);
+});
+
 (async () => {
     let failed = 0;
     for (const [name, fn] of tests) {

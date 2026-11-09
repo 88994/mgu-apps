@@ -43,7 +43,7 @@ mgu.run({
         function diagnostics() {
             const s = engine.status(), g = guard.snapshot();
             return [
-                'Light Show 0.2.0 - EXPERIMENTAL / physical effect not verified',
+                'Light Show 0.2.1 - EXPERIMENTAL / physical effect not verified',
                 'State: ' + s.state + ' - ' + s.note,
                 'TASU: ' + (link.available ? 'available' : 'unavailable'),
                 'BDC address: 40 | SGBD: ' + (link.index || 'not read') + ' | required: ' + P.INDEX,
@@ -57,13 +57,17 @@ mgu.run({
                 'Original start/show error: ' + (engine.originalFault || 'none recorded'),
                 'Output status (raw, not physical proof):',
             ].concat(engine.outputSamples.map((x) => x.label + ': ' + (x.summary || x.error || 'raw only') + '\n' + (x.reply || ''))).concat([
+                '', 'Headlamps (read only):',
+            ]).concat(engine.headlamps.map((x) => x.side + ' [' + P.hex([x.address]) + '] ' + (x.name || 'module')
+                + ' | SGBD ' + (x.index || 'unknown') + '\nHigh-beam mapping: ' + (x.highBeamRaw || 'unavailable')
+                + '\n' + (x.error || x.note || ''))).concat([
                 '', 'Recent diagnostic requests:',
-            ]).concat(link.trace.slice(-14).map((r) => r.at.slice(11, 23) + ' > ' + r.tx + ' < ' + (r.rx || r.error || 'waiting'))).join('\n');
+            ]).concat(link.trace.slice(-14).map((r) => r.at.slice(11, 23) + ' [' + P.hex([r.address]) + '] > ' + r.tx + ' < ' + (r.rx || r.error || 'waiting'))).join('\n');
         }
         function saveLog() {
             try {
-                const report = { app: 'light_show', version: '0.2.0', at: new Date().toISOString(),
-                    physicalEffectVerified: false, status: engine.status(), guard: guard.snapshot(),
+                const report = { app: 'light_show', version: '0.2.1', at: new Date().toISOString(),
+                    physicalEffectVerified: false, headlamps: engine.headlamps, status: engine.status(), guard: guard.snapshot(),
                     settings: config(), bdcIndex: link.index, recoveryPending: journal.pending(), originalFault: engine.originalFault, outputSamples: engine.outputSamples, trace: link.trace };
                 const file = path.join(ctx.dataDir, 'light-show-diagnostics.json');
                 fs.writeFileSync(file + '.tmp', JSON.stringify(report, null, 2)); fs.renameSync(file + '.tmp', file);
@@ -81,6 +85,7 @@ mgu.run({
         ['BTN_IDENTIFY', 'BTN_DIAG_IDENTIFY'].forEach((name) => ui.onClick(name, () => engine.identify()));
         ui.onClick('BTN_DIAG', () => { ui.text('DIAG_TEXT', diagnostics()); return ui.open('DIAGNOSTICS'); });
         ui.onClick('BTN_EXPORT', saveLog);
+        ui.onClick('BTN_HEADLAMPS', async () => { await engine.inspectHeadlamps(); ui.text('DIAG_TEXT', diagnostics()); });
         ui.onClick('BTN_CLEAR_LOCK', () => ui.open('CONFIRM_LIGHTS'));
         ui.onClick('BTN_CANCEL_CLEAR', () => ui.open('DIAGNOSTICS'));
         ui.onClick('BTN_CONFIRM_CLEAR', async () => {

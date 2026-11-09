@@ -1,8 +1,23 @@
-# Light Show 0.2.0
+# Light Show 0.2.1
 
 Experimentelle Stroboskop-App für BMW MGU iDrive 7, angelehnt an
 [das Reel von bmwneva](https://www.instagram.com/reel/DfR0l0HxKNS/).
 Eigenständige Implementierung, kein Originalcode aus dem Reel.
+
+## 0.2.1: Scheinwerfermodule auslesen
+
+Der Nutzer bestätigt jetzt sichtbares Fernlicht über den neuen Weg, berichtet aber
+bei jedem Einschalten Stellgeräusche, die bei normaler Lichthupe nicht auftreten.
+Die Ursache des Geräusches und eine Beteiligung der Höhenregelung sind noch nicht
+messtechnisch bestätigt. Die App sendet keine ausdrücklichen Stellmotorbefehle.
+
+Unter **Diagnostics → Read headlamp modules / LED mapping** liest 0.2.1 die
+Identität der beiden Scheinwerfermodule und bei passender FLM02-L/R-Identität
+die Zuordnung der Fernlicht-LED-Ausgänge. Unbekannte Varianten werden nur
+identifiziert. Diese Prüfung sendet ausschließlich Leseanfragen, keine
+Sitzungswechsel, Licht- oder Stellmotorbefehle. Die Ergebnisse erscheinen in
+Diagnostics und im Export. Kanalwerte werden roh angezeigt und noch nicht zur
+Ansteuerung verwendet. Diese Version behebt die Stellgeräusche noch nicht.
 
 ## Tatsächlicher Teststand
 
@@ -14,7 +29,7 @@ Die allgemeine IO-Rückgabe wurde mit `NRC 22` abgelehnt. Nur das manuelle
 Bestätigen in Diagnostics löschte die gespeicherte Startsperre; dadurch wurde
 die Lichtansteuerung nicht repariert.
 
-**0.2.0 ergänzt einen anderen, noch nicht im Fahrzeug bestätigten Ansteuerungsweg:**
+**0.2.0 ergänzte einen anderen Ansteuerungsweg, dessen Lichtwirkung inzwischen mit Stellgeräuschen gemeldet wurde:**
 die zeitbegrenzte BMW-Leuchtenfunktion `D542`. Sie fordert beide Leuchten gemeinsam
 an und verwendet Zeit `0` als eigenen Stop-Auftrag. Dieser Weg benutzt keine
 allgemeine `E3B5`-IO-Rückgabe. Das abwechselnde Links-/Rechts-Blinken bleibt im

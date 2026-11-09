@@ -1,5 +1,6 @@
 'use strict';
 const P = require('./protocol');
+const Headlamps = require('./headlamps');
 
 // One serialized conversation. Stop sets the cancellation flag immediately;
 // a possibly accepted in-flight command must finish before stop is sent.
@@ -12,7 +13,7 @@ class Engine {
         this.state = 'IDLE'; this.note = 'Ready'; this.mask = [0, 0];
         this.sent = 0; this.stepMs = 0; this.run = null; this.cancel = false;
         this.releaseConfirmed = false; this.stopRequested = false; this.outputSamples = []; this.originalFault = null;
-        this.control = { route: 'digital', lights: null }; this.stopConfirmed = false;
+        this.control = { route: 'digital', lights: null }; this.stopConfirmed = false; this.headlamps = [];
     }
     status() {
         return { state: this.state, note: this.note, mask: this.mask.slice(), sent: this.sent,
@@ -42,6 +43,19 @@ class Engine {
             if (this.journal.pending()) this.journal.clear();
             this.releaseConfirmed = false; this.stopConfirmed = false;
             this.update('IDLE', 'Saved stop lock cleared after user light check; physical lamp control remains unverified');
+        } catch (e) { this.update('ERROR', String(e.message || e)); }
+        finally { this.run = null; done(); }
+    }
+    async inspectHeadlamps() {
+        if (this.run) return this.run;
+        const why = this.guard.reason();
+        if (why) { this.update('BLOCKED', why); return; }
+        let done;
+        this.run = new Promise((r) => { done = r; });
+        this.update('CHECKING', 'Reading headlamp identities and LED mapping');
+        try {
+            this.headlamps = await Headlamps.read(this.link);
+            this.update(this.journal.pending() ? 'BLOCKED' : 'IDLE', 'Headlamp read complete - see Diagnostics');
         } catch (e) { this.update('ERROR', String(e.message || e)); }
         finally { this.run = null; done(); }
     }
