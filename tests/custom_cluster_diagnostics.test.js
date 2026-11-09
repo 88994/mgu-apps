@@ -40,8 +40,11 @@ const cluster = new ClusterLayers(log, null, fake);
 cluster.settings(settings());
 assert.strictEqual(cluster.status().ready, true);
 assert.strictEqual(cluster.status().panelActive, false);
+assert.ok(cluster.status().testGuard.includes('no complete sample'), 'reason distinguishes missing vehicle telemetry');
 assert.strictEqual(cluster.armPanel(), false, 'no car signal should not activate panel');
+assert.strictEqual(cluster.status().disarmReason, cluster.status().testGuard);
 parked(cluster);
+assert.ok(cluster.status().testGuard.startsWith('Ready:'), 'parked car with live data may test');
 assert.strictEqual(cluster.armPanel(), true);
 assert.strictEqual(cluster.status().panelActive, true);
 assert.strictEqual(cluster.status().panelLayer, 'requesting', 'created does not mean shown');
@@ -69,6 +72,7 @@ assert.strictEqual(cluster.armPanel(), true);
 assert.strictEqual(fake.effects[1].w, 1920, 'opt-in full design covers panel');
 cluster.observeVehicle({ stage: 'N' });
 assert.strictEqual(cluster.status().panelActive, false, 'leaving P drops full design');
+assert.ok(cluster.status().testGuard.includes('Selector N'), 'guard identifies neutral instead of P');
 assert.deepStrictEqual(fake.drops, [1, 2]);
 fake.emit('status', 'slot 0x203 status 3: content class 2 map 1');
 
@@ -81,7 +85,7 @@ assert.strictEqual(altRenderer.effects[0].target, 'panel201');
 altCluster.close();
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluster-qr-test-'));
-const ctx = { dataDir: tempDir, spec: { version: '0.5.3' } };
+const ctx = { dataDir: tempDir, spec: { version: '0.5.4' } };
 const testReport = QR.report(ctx, cluster, 'auto', 'none');
 assert.ok(testReport.pages.length > 0);
 const payloads = testReport.pages.map((page, idx) => {

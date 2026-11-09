@@ -124,6 +124,13 @@ class ClusterLayers {
     badge(opened) { this.phoneOpen = !!opened; this.apply(); }
     live() { return !!this.lastSample && Date.now() - this.lastSample < 30000; }
     parked() { return this.live() && this.data.stage === 'P' && this.data.speed >= 0 && this.data.speed < 0.5; }
+    testGuard() {
+        if (!this.lastSample) return 'Waiting for real speed + RPM (no complete sample yet)';
+        if (!this.live()) return 'Speed/RPM stale (' + Math.round((Date.now() - this.lastSample) / 1000) + 's)';
+        if (this.data.stage !== 'P') return 'Selector ' + (this.data.stage || 'unknown') + ' - P required';
+        if (this.data.speed >= 0.5) return 'Vehicle moving (' + this.data.speed.toFixed(1) + ' km/h)';
+        return 'Ready: real speed/RPM, stopped, selector P';
+    }
     pollStatus(force) {
         if (!this.ready) return;
         const now = Date.now();
@@ -142,7 +149,7 @@ class ClusterLayers {
         if (this.options.layout !== 'g80' && this.options.layout !== 'oem' && this.options.layout !== 'sixwb') {
             this.disarmReason = 'Choose a full-panel design first'; return false;
         }
-        if (!this.parked()) { this.disarmReason = 'Real speed and gear P required'; return false; }
+        if (!this.parked()) { this.disarmReason = this.testGuard(); return false; }
         if (!this.ready) { this.disarmReason = 'Renderer not connected'; return false; }
         const target = this.panelTarget();
         if (target !== 'panel' && !String(this.cr.targets || '').split(',').some((t) => t.trim().indexOf(target + ':') === 0)) {
@@ -173,7 +180,7 @@ class ClusterLayers {
         const mode = MODES[this.options.layout] || 0;
         const valid = this.live();
         if (this.armedUntil && (!this.parked() || Date.now() >= this.armedUntil)) {
-            this.disarm(this.parked() ? 'Test timeout — original cluster restored' : 'Left P, moving, or stale data');
+            this.disarm(this.parked() ? 'Test timeout — original cluster restored' : this.testGuard());
         }
         const panelActive = (mode === 4 || mode === 5 || mode === 6) && this.armedUntil > Date.now() && this.parked();
         if (panelActive && !this.panelRef) {
@@ -241,6 +248,7 @@ class ClusterLayers {
             rendererBackend: this.cr.backend || 'unknown', rendererTargets: this.cr.targets || '',
             rendererStatusAt: this.rendererStatusAt,
             lastRefusal: this.lastRefusal, disarmReason: this.disarmReason,
+            testGuard: this.testGuard(),
             secondsLeft: this.panelRef ? Math.max(0, Math.ceil((this.armedUntil - Date.now()) / 1000)) : 0,
             color: colorHex(this.options.layout === 'sixwb' ? resolve6WBColor(this.options, Date.now())
                 : resolveColor(this.options, Date.now())) };

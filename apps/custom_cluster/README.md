@@ -1,6 +1,37 @@
-# Custom Cluster 0.5.1 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.4 — BMW G21 / MGU iDrive 7
 
 **Experimental. Not validated on a real car. No authorization for driving with a replaced speedometer.**
+
+## 0.5.4: HMI navigation and parking-test diagnostics
+
+The former diagnostics and QR report were persistent drawing modes of the **MAIN** canvas.
+Re-entering the app could therefore show the previous QR or diagnostic page rather than the
+cluster preview. They are now three separate RHMI states: **MAIN** (design preview),
+**DIAGNOSTICS** (renderer/guard status), and **QR_REPORT** (offline QR export).
+
+* **Diagnostics** opens its own page with **Refresh**, **QR report**, and **Back to cluster**.
+* **QR logs** opens a new snapshot on its own page with **Next QR page** (wraps after the
+  final page), **New report** (fresh renderer snapshot), and **Back to cluster**.
+* Returning to MAIN always shows the selected design preview, even if an old report exists.
+  The App entry point still maps to MAIN as before. The diagnostic export includes recent
+  iDrive navigation events, so another failure can be correlated with button presses.
+* The app-list icon now has a transparent margin to make the selection frame distinguishable.
+  The actual focus highlight is drawn by BMW HMI, not the app; verify on the head unit.
+* A rejected panel test now says whether no complete speed/RPM sample was received, the
+  sample is older than 30 seconds, the selector is not **P**, or the car is moving. The
+  safety guard is unchanged: no real sample means no KOMBI panel takeover.
+
+**Observed test:** the previous small white marker was expected when the diagnostic probe
+was selected, and it proves only that a panel-layer graphic reached the cluster. The native
+right-side music panel disappeared while the map persisted. The occupied `0x203` panel
+slot may compete with OEM widgets; its exact render and compositor behavior are not yet
+validated. Do **not** interpret this as a working replacement for the full OEM gauges.
+
+**Parked retest:** select 6WB, G80 or G21 OEM-style → set **Parked test content** to
+**Small diagnostic marker** → verify live speed/RPM and selector **P** → activate the 12 s
+test. While it is armed, open QR logs, scan/photograph each page, then return via **Back
+to cluster**. Retest full design only after reviewing marker/slot behavior. Do not drive
+with an experimental instrument panel.
 
 ## 0.5.1: Small shader probe and offline diagnostics
 
@@ -27,8 +58,8 @@ Press **Diagnostics** for the renderer backend, advertised targets, current
 panel status, refusal reason and slot status excerpts.
 
 Press **QR logs** to capture full renderer status and current app diagnostics.
-Photograph each numbered QR code; press the button again for the next page
-(after the last page, it closes). No phone-MGU network or internet is needed.
+Photograph each numbered QR code; use **Next QR page** to advance and **Back to cluster**
+to return (since 0.5.4). No phone-MGU network or internet is needed.
 Codes contain compressed text under a `CCLOG1` identifier. Put the scanned
 QR text into `scanned-pages.txt` and run
 `python3 tools/decode_custom_cluster_logs.py scanned-pages.txt`.

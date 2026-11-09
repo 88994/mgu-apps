@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Custom Cluster 0.5.1 - staged KOMBI probe, diagnostic logs, map-safe panels.
+ * Custom Cluster 0.5.4 - dedicated HMI pages and staged, map-safe KOMBI probes.
  * Stock is the default. Real values only can reach cluster-render; emulator
  * and demo values stay exclusively on the centre-screen preview.
  */
@@ -27,7 +27,17 @@ mgu.run({
         const bridge = new PhoneBridge(ctx.dataDir, log, () => {
             cluster.badge(bridge.reported() === 'opened');
         });
-        let showDiagnostics = false, qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
+        let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
+        const uiEvents = [];
+        function uiEvent(event) {
+            uiEvents.push(new Date().toISOString() + ' ' + event);
+            if (uiEvents.length > 40) uiEvents.shift();
+            log.info('cluster ui: ' + event);
+        }
+        ui.onVisible((name, visible) => {
+            if (name === 'MAIN' || name === 'DIAGNOSTICS' || name === 'QR_REPORT')
+                uiEvent(name + (visible ? ' visible' : ' hidden'));
+        });
 
         function syncSettings() {
             cluster.settings({ layout: settings.get('layout'), accent: settings.get('accent'),
@@ -44,36 +54,52 @@ mgu.run({
         settings.onChange(syncSettings);
         car.onSample((d) => { if (!d.demo) cluster.sample(d); });
         ui.onClick('BTN_TEST', () => {
+            uiEvent('parked test clicked');
             const enabled = cluster.armPanel();
             log.info('panel test: ' + (enabled ? 'armed for 12 s' : cluster.status().disarmReason));
         });
         ui.onClick('BTN_DIAG', () => {
-            qrReport = null;
-            showDiagnostics = !showDiagnostics;
+            uiEvent('open diagnostics');
             cluster.pollStatus(true);
+            return ui.open('DIAGNOSTICS');
         });
-        // Photographed QR pages can be transferred without any phone-to-MGU network.
-        // First press captures a fresh report; successive presses show the next page.
-        ui.onClick('BTN_QR', () => {
-            showDiagnostics = false;
+        ui.onClick('BTN_DIAG_REFRESH', () => { uiEvent('refresh diagnostics'); cluster.pollStatus(true); });
+        ui.onClick('BTN_DIAG_HOME', () => { uiEvent('diagnostics back to main'); return ui.open('MAIN'); });
+        // QR is a genuine HMI page; it is never a sticky mode of the main screen.
+        // Each new report captures the current renderer state, including a running test.
+        function captureQr() {
             try {
-                if (!qrReport) {
-                    cluster.pollStatus(true);
-                    qrReport = QR.report(ctx, cluster, waze.status, bridge.reported());
-                    qrPage = 0;
-                    log.info('cluster log export ' + qrReport.id + ': ' + qrReport.pages.length +
-                        ' QR pages; saved to ' + qrReport.storedAt.join(', '));
-                } else {
-                    qrPage++;
-                    if (qrPage >= qrReport.pages.length) { qrReport = null; qrMatrix = null; return; }
-                }
+                uiEvent('capture QR report');
+                cluster.pollStatus(true);
+                qrReport = QR.report(ctx, cluster, waze.status, bridge.reported(), uiEvents.join('\n'));
+                qrPage = 0;
                 qrMatrix = QR.matrix(qrReport.pages[qrPage]);
                 qrError = '';
+                log.info('cluster log export ' + qrReport.id + ': ' + qrReport.pages.length +
+                    ' QR pages; saved to ' + qrReport.storedAt.join(', '));
             } catch (e) {
                 qrReport = null;
                 qrMatrix = null;
                 qrError = String(e && e.message || e);
                 log.warn('cluster QR: ' + qrError);
+            }
+        }
+        const openQr = () => { uiEvent('open QR screen'); captureQr(); return ui.open('QR_REPORT'); };
+        ui.onClick('BTN_QR', openQr);
+        ui.onClick('BTN_DIAG_QR', openQr);
+        ui.onClick('BTN_QR_NEW', captureQr);
+        ui.onClick('BTN_QR_HOME', () => { uiEvent('QR back to main'); return ui.open('MAIN'); });
+        ui.onClick('BTN_QR_NEXT', () => {
+            uiEvent('QR next page');
+            if (!qrReport || !qrReport.pages.length) return captureQr();
+            try {
+                qrPage = (qrPage + 1) % qrReport.pages.length;
+                qrMatrix = QR.matrix(qrReport.pages[qrPage]);
+                qrError = '';
+            } catch (e) {
+                qrError = String(e && e.message || e);
+                qrMatrix = null;
+                log.warn('cluster QR page: ' + qrError);
             }
         });
 
@@ -86,45 +112,59 @@ mgu.run({
         }, 250);
         process.once('exit', () => { clearInterval(cleanup); cluster.close(); bridge.stop(); });
 
+        ctx.loop('QR_REPORT', 2, () => {
+            const t = ctx.theme();
+            const cv = ctx.canvas(1600, 520).clear(t.bg);
+            G.frame(cv, t, ['Custom Cluster', 'QR diagnostics'], 0, [{ text: 'OFFLINE LOG' }]);
+            if (!qrReport || !qrMatrix) {
+                cv.text('QR export unavailable', 60, 130, 37, t.warn, { font: 'bold' });
+                cv.text('Error: ' + (qrError || 'No report generated').slice(0, 90), 60, 200, 23, t.text);
+                cv.text('Press New report to retry, or Back to cluster.', 60, 270, 24, t.dim);
+                return ui.image('QR_REPORT_GFX', cv);
+            }
+            cv.text('Cluster diagnostic QR export', 60, 98, 37, t.text, { font: 'bold' });
+            cv.text('Page ' + (qrPage + 1) + ' / ' + qrReport.pages.length +
+                '   Report ' + qrReport.id, 60, 151, 27, t.text);
+            cv.text('Photograph/scan every page in order.', 60, 215, 25, t.dim);
+            cv.text('Next QR page cycles through all pages.', 60, 257, 22, t.dim);
+            cv.text('Use Back to cluster at any time.', 60, 301, 22, t.dim);
+            cv.text('No Wi-Fi or internet required.', 60, 346, 20, t.dim);
+            cv.text('To decode: tools/decode_custom_cluster_logs.py', 60, 407, 18, t.text);
+            try { QR.draw(cv, qrMatrix, 1080, 75, 395); }
+            catch (e) { cv.text('QR image error: ' + String(e.message).slice(0, 58), 60, 459, 20, t.warn); }
+            return ui.image('QR_REPORT_GFX', cv);
+        });
+
+        ctx.loop('DIAGNOSTICS', 2, () => {
+            const t = ctx.theme();
+            const cv = ctx.canvas(1600, 520).clear(t.bg);
+            const current = cluster.status();
+            const statusLines = cluster.rendererStatus().split('\n')
+                .filter((line) => /^(slot |target |layer |panel|scene|Dcsm|cluster|error|guard)/i.test(line))
+                .slice(0, 13);
+            G.frame(cv, t, ['Custom Cluster', 'Diagnostics'], 0, [{ text: 'PARKED TEST' }]);
+            cv.text('Renderer: ' + current.rendererBackend +
+                '  /  ' + (current.ready ? 'connected' : 'offline'), 48, 85, 25, t.text);
+            cv.text('Targets: ' + current.rendererTargets.slice(0, 110), 48, 118, 17, t.dim);
+            cv.text('Requested: ' + (current.panelActive ? 'YES' : 'NO') +
+                ' / ' + current.panelTarget + ' / ' + (current.activeTestMode || '-'), 48, 158, 21, t.text);
+            cv.text('Layer: ' + current.panelLayer +
+                '  |  Slot: ' + current.panelTargetState, 48, 188, 20, t.text);
+            cv.text('Slot reason: ' + (current.panelTargetReason || '-').slice(0, 112), 48, 216, 17, t.warn);
+            cv.text('Last refusal: ' + (current.lastRefusal || '-').slice(0, 115), 48, 244, 17, t.warn);
+            cv.text('Test guard: ' + current.testGuard.slice(0, 115), 48, 270, 18, t.warn);
+            cv.text('Renderer status lines (read-only):', 48, 298, 19, t.text);
+            if (!statusLines.length)
+                cv.text('No status reply yet. The renderer may not support status reports.', 48, 320, 16, t.dim);
+            statusLines.forEach((line, i) =>
+                cv.text(line.slice(0, 205), 48, 320 + i * 15, 12, t.dim));
+            return ui.image('DIAGNOSTICS_GFX', cv);
+        });
+
         ctx.loop('MAIN', 2, () => {
             const t = ctx.theme(), d = car.data(), st = cluster.status();
             const cv = ctx.canvas(1600, 520).clear(t.bg);
             const layout = settings.get('layout');
-            if (qrReport && qrMatrix) {
-                G.frame(cv, t, ['Custom Cluster', 'QR diagnostics'], 0, [{ text: 'OFFLINE LOG' }]);
-                cv.text('Cluster diagnostic QR export', 60, 98, 37, t.text, { font: 'bold' });
-                cv.text('Page ' + (qrPage + 1) + ' / ' + qrReport.pages.length +
-                    '   Report ' + qrReport.id, 60, 151, 27, t.text);
-                cv.text('Photograph/scan every page in order.', 60, 215, 25, t.dim);
-                cv.text('Press QR logs for next page; after last: close.', 60, 257, 22, t.dim);
-                cv.text('No Wi-Fi or internet is required.', 60, 302, 22, t.dim);
-                cv.text('Full text also saved in app data and on USB if available.', 60, 346, 19, t.dim);
-                cv.text('To decode: tools/decode_custom_cluster_logs.py', 60, 407, 18, t.text);
-                QR.draw(cv, qrMatrix, 1080, 75, 395);
-                return ctx.ui.image('MAIN_GFX', cv);
-            }
-            if (showDiagnostics) {
-                const current = cluster.status();
-                const statusLines = cluster.rendererStatus().split('\n')
-                    .filter((line) => /^(slot |target |layer |panel|scene|Dcsm|cluster|error|guard)/i.test(line))
-                    .slice(0, 13);
-                G.frame(cv, t, ['Custom Cluster', 'Diagnostics'], 0, [{ text: 'PARKED TEST' }]);
-                cv.text('Renderer: ' + current.rendererBackend +
-                    '  /  ' + (current.ready ? 'connected' : 'offline'), 48, 85, 25, t.text);
-                cv.text('Targets: ' + current.rendererTargets.slice(0, 110), 48, 118, 17, t.dim);
-                cv.text('Requested: ' + (current.panelActive ? 'YES' : 'NO') +
-                    ' / ' + current.panelTarget + ' / ' + (current.activeTestMode || '-'), 48, 158, 21, t.text);
-                cv.text('Layer: ' + current.panelLayer +
-                    '  |  Slot: ' + current.panelTargetState, 48, 188, 20, t.text);
-                cv.text('Slot reason: ' + (current.panelTargetReason || '-').slice(0, 112), 48, 216, 17, t.warn);
-                cv.text('Last refusal: ' + (current.lastRefusal || '-').slice(0, 115), 48, 244, 17, t.warn);
-                cv.text('Renderer status lines (read-only):', 48, 285, 19, t.text);
-                if (!statusLines.length)
-                    cv.text('No status reply yet. The renderer may not support status reports.', 48, 310, 16, t.dim);
-                statusLines.forEach((line, i) =>
-                    cv.text(line.slice(0, 205), 48, 306 + i * 15, 12, t.dim));
-                return ctx.ui.image('MAIN_GFX', cv);
-            }
             const activeOptions = { accent: settings.get('accent'),
                 colorMode: settings.get('colorMode'), rgbRed: settings.get('rgbRed'),
                 rgbGreen: settings.get('rgbGreen'), rgbBlue: settings.get('rgbBlue'),

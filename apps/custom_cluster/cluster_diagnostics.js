@@ -15,7 +15,7 @@ qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
 const CHUNK = 280;
 const MEDIA_ROOTS = ['/media', '/run/media'];
 
-function snapshot(ctx, cluster, wazeStatus, phoneStatus) {
+function snapshot(ctx, cluster, wazeStatus, phoneStatus, hmiEvents) {
     const data = [
         'CUSTOM CLUSTER DIAGNOSTICS v1',
         'Created: ' + new Date().toISOString(),
@@ -30,6 +30,9 @@ function snapshot(ctx, cluster, wazeStatus, phoneStatus) {
         '',
         '=== PHONE EVENT ===',
         String(phoneStatus || ''),
+        '',
+        '=== HMI NAVIGATION (last 40 events) ===',
+        String(hmiEvents || '(no UI events recorded)'),
         '',
         '=== RENDERER SLOT AND LAYER STATUS ===',
         cluster.rendererStatus() || '(no renderer status response yet)',
@@ -65,8 +68,8 @@ function save(ctx, data) {
     return result;
 }
 
-function report(ctx, cluster, wazeStatus, phoneStatus) {
-    const full = snapshot(ctx, cluster, wazeStatus, phoneStatus);
+function report(ctx, cluster, wazeStatus, phoneStatus, hmiEvents) {
+    const full = snapshot(ctx, cluster, wazeStatus, phoneStatus, hmiEvents);
     const packed = zlib.deflateSync(Buffer.from(full, 'utf8')).toString('base64');
     const id = crypto.createHash('sha256').update(full).digest('hex').slice(0, 10);
     const count = Math.max(1, Math.ceil(packed.length / CHUNK));
