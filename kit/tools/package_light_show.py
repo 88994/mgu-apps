@@ -80,7 +80,7 @@ def main():
         'Store catalog format: https://github.com/robertnisipeanu/mgu-store/blob/main/docs/PUBLISHING.md\n'
         'Reference analysis only: https://github.com/emdzej/ediabasx (PolyForm Noncommercial 1.0.0).\n'
         'EdiabasX is not bundled or used by the installed app.\n'
-        'No BMW SDK or PRG is included. No physical vehicle test has been performed.\n')
+        'No BMW SDK or PRG is included. Legacy IO vehicle test reported no physical high-beam effect; the new timed-function route has not been vehicle verified.\n')
     # Verify install catalog, archive identity, syntax-independent layout and SDK omission.
     with tarfile.open(fileobj=io.BytesIO(artifact), mode='r:gz') as tar:
         names = tar.getnames()

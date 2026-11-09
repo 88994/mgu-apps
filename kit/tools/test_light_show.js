@@ -22,9 +22,10 @@ const tick = () => new Promise((r) => setImmediate(r));
 function rig(o) {
     o = o || {}; let clock = 10000, pending = !!o.pending;
     const calls = [], state = { block: null };
-    const journal = { pending: () => pending,
-        mark: (index) => { calls.push('mark'); if (o.writeFail) throw Error('disk full'); assert.strictEqual(index, P.INDEX); pending = true; },
-        clear: () => { calls.push('clear'); pending = false; } };
+    const journal = { value: o.record || null, pending: () => pending,
+        mark: (index, control) => { calls.push('mark'); if (o.writeFail) throw Error('disk full'); assert.strictEqual(index, P.INDEX);
+            journal.value = Object.assign({ index }, control); pending = true; },
+        clear: () => { calls.push('clear'); pending = false; journal.value = null; } };
     const link = {
         index: P.INDEX, available: true,
         identify: async () => { calls.push('identify'); if (o.badIdentity) throw Error('Unsupported BDC'); },
@@ -33,13 +34,17 @@ function rig(o) {
             calls.push(['set', output, on]); if (o.onSet) await o.onSet(output, on, r);
             if (o.setFail) throw Error('NRC 31');
         },
+        timed: async (lights, ms) => {
+            calls.push(['timed', lights, ms]); if (o.onTimed) await o.onTimed(lights, ms, r);
+            if (o.timedFail || (ms === 0 && o.timedStopFail)) throw Error('timed NRC 22');
+        },
         keepalive: async () => { calls.push('keepalive'); if (o.keepFail) throw Error('keepalive timed out'); },
         release: async () => { calls.push('release'); if (o.releaseFail) throw Error('release timed out'); },
         defaultSession: async () => { calls.push('default'); if (o.defaultFail) throw Error('default timed out'); },
     };
     const engine = new Engine({ link, journal, guard: { reason: () => state.block }, now: () => clock,
         sleep: async (ms) => { clock += ms; if (o.onSleep) await o.onSleep(r); }, changed: () => {}, log: { info() {}, warn() {} } });
-    const r = { engine, calls, link, state, journal, advance: (ms) => { clock += ms; } }; return r;
+    const r = { engine, calls, link, state, journal, now: () => clock, advance: (ms) => { clock += ms; } }; return r;
 }
 function controls(r) { return r.calls.filter(Array.isArray); }
 
@@ -225,6 +230,110 @@ test('Original actuator error survives a failed cleanup', async () => {
     const r = rig({ setFail: true, releaseFail: true }); await r.engine.start(cfg);
     assert.strictEqual(r.engine.originalFault, 'NRC 31');
     assert(r.engine.note.includes('NRC 31')); assert(r.engine.note.includes('release timed out'));
+});
+
+const timedCfg = Object.assign({}, cfg, { route: 'timed' });
+test('All 28 timed function telegrams match the independently executed PRG bytecode', () => {
+    const rows = require(path.join(app, 'protocol-evidence.json')).timedFunction.captured;
+    assert.strictEqual(rows.length, 28);
+    for (const row of rows) assert.deepStrictEqual([0x2E].concat(P.timedControl(row.lights, row.durationMs)), row.uds);
+    for (const ms of [-10, 1, 100.5, 2010, 327000, NaN, Infinity, '100']) assert.throws(() => P.timedControl('high', ms));
+    for (const lights of ['constructor', '__proto__', 'brake', null]) assert.throws(() => P.timedControl(lights, 2000));
+});
+test('Timed settings use their own patterns and reject inherited object keys', () => {
+    const values = { route: 'timed', timedPattern: 'triple', pattern: 'alternate', lights: 'high', tempo: '150', duration: '15' };
+    assert.strictEqual(P.settings((k) => values[k]).pattern, 'triple');
+    for (const change of [{ route: 'other' }, { timedPattern: 'alternate' }, { timedPattern: 'constructor' }, { lights: 'toString' }]) {
+        const v = Object.assign({}, values, change); assert.throws(() => P.settings((k) => v[k]));
+    }
+    const spec = require(path.join(app, 'app.json'));
+    assert.strictEqual(spec.settings.find((s) => s.key === 'route').default, 'timed');
+});
+test('Two-second function test sends one finite ON and its own stop without legacy IO commands', async () => {
+    const r = rig(); const began = r.now(); await r.engine.testFunction('high');
+    assert.deepStrictEqual(controls(r), [['timed', 'high', 2000], ['timed', 'high', 0]]);
+    assert.deepStrictEqual(r.calls.slice(-3), [['timed', 'high', 0], 'default', 'clear']);
+    assert.strictEqual(r.now() - began, 2000); assert(!r.calls.includes('release'));
+    assert.strictEqual(r.engine.stopConfirmed, true); assert.strictEqual(r.engine.releaseConfirmed, false);
+    assert(r.engine.note.includes('not verified'));
+});
+test('Every timed pattern uses finite pulses for the chosen function and stops within its deadline', async () => {
+    for (const pattern of Object.keys(P.BOTH_PATTERNS)) for (const lights of Object.keys(P.FUNCTIONS)) {
+        const r = rig(); const began = r.now(); await r.engine.start(Object.assign({}, timedCfg, { pattern, lights, tempo: 500 }));
+        const cmds = controls(r); assert(cmds.length > 2);
+        assert(cmds.every((c) => c[0] === 'timed' && c[1] === lights && (c[2] === 0 || c[2] === 500)));
+        assert.strictEqual(r.now() - began, 5000); assert(!r.calls.includes('release'));
+        assert.deepStrictEqual(r.calls.slice(-3), [['timed', lights, 0], 'default', 'clear']);
+    }
+});
+test('Timed STOP waits for the in-flight ON and sends no later ON or legacy fallback', async () => {
+    let unlock, entered; const reached = new Promise((r) => { entered = r; });
+    const r = rig({ onTimed: (lights, ms) => ms ? new Promise((resolve) => { unlock = resolve; entered(); }) : undefined });
+    const show = r.engine.start(timedCfg); await reached;
+    const stopped = r.engine.stop(); await tick(); assert.strictEqual(controls(r).length, 1);
+    unlock(); await show; await stopped;
+    assert.deepStrictEqual(controls(r), [['timed', 'high', 100], ['timed', 'high', 0]]);
+    assert.deepStrictEqual(r.calls.slice(-3), [['timed', 'high', 0], 'default', 'clear']);
+});
+test('Timed guard loss prevents further ON requests, and a blocked function test sends nothing', async () => {
+    const r = rig({ onTimed: (lights, ms, r) => { if (ms) r.state.block = 'Select P'; } });
+    await r.engine.start(timedCfg);
+    assert.deepStrictEqual(controls(r), [['timed', 'high', 100], ['timed', 'high', 0]]);
+    const blocked = rig(); blocked.state.block = 'Moving'; await blocked.engine.testFunction('high');
+    assert.deepStrictEqual(blocked.calls, []);
+});
+test('Slow timed transport does not enqueue stale pulses or extend activation times', async () => {
+    const r = rig({ onTimed: (lights, ms, r) => { if (ms) r.advance(3000); } });
+    await r.engine.start(timedCfg);
+    assert.deepStrictEqual(controls(r), [['timed', 'high', 100], ['timed', 'high', 0], ['timed', 'high', 100], ['timed', 'high', 0]]);
+});
+test('Rejected timed ON is not retried and cleanup never switches to the legacy IO protocol', async () => {
+    const r = rig({ timedFail: true }); await r.engine.testFunction('high');
+    assert.deepStrictEqual(controls(r), [['timed', 'high', 2000], ['timed', 'high', 0]]);
+    assert.strictEqual(r.journal.pending(), true); assert.strictEqual(r.engine.state, 'ERROR');
+    assert.strictEqual(r.engine.stopConfirmed, false); assert(!r.calls.includes('release')); assert(r.calls.includes('default'));
+});
+test('Rejected timed stop keeps its route-specific recovery lock despite a positive default session', async () => {
+    const r = rig({ timedStopFail: true }); await r.engine.testFunction('drl');
+    assert.strictEqual(r.journal.pending(), true); assert.strictEqual(r.journal.value.route, 'timed');
+    assert.strictEqual(r.journal.value.lights, 'drl'); assert.strictEqual(r.engine.stopConfirmed, false);
+    assert(r.engine.note.includes('Timed stop pending')); assert(r.calls.includes('default'));
+});
+test('Persisted timed recovery stops the saved function; a legacy marker still uses legacy return', async () => {
+    for (const record of [{ route: 'timed', lights: 'fog' }, { index: P.INDEX }]) {
+        const r = rig({ pending: true, record });
+        await r.engine.testFunction('high'); assert.deepStrictEqual(r.calls, []);
+        await r.engine.stop();
+        assert.deepStrictEqual(r.calls, ['identify', record.route === 'timed' ? ['timed', 'fog', 0] : 'release', 'default', 'clear']);
+    }
+    for (const record of [{ corrupted: true }, { route: 'timed', lights: 'constructor' }, { route: 'unknown' }]) {
+        const r = rig({ pending: true, record }); await r.engine.stop();
+        assert.deepStrictEqual(r.calls, ['identify']); assert.strictEqual(r.journal.pending(), true);
+    }
+});
+test('Real recovery journal retains the function across restart and rejects an invalid context', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'light-show-timed-'));
+    try {
+        const a = new Journal(dir); a.mark(P.INDEX, { route: 'timed', lights: 'drl' });
+        const b = new Journal(dir); assert.strictEqual(b.value.route, 'timed'); assert.strictEqual(b.value.lights, 'drl');
+        assert.throws(() => b.mark(P.INDEX, { route: 'timed', lights: 'constructor' }));
+        b.clear(); assert.strictEqual(new Journal(dir).pending(), false);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('Readback summaries decode PRG field offsets and never describe an LED measurement', () => {
+    const output = [0x62, 0xE3, 0xB9].concat(new Array(9).fill(0)); output[3 + 7] = 1;
+    assert.strictEqual(P.statusSummary(output, 'high'), 'BDC output L=1 R=0 (not an LED measurement)');
+    const fn = [0x62, 0xD5, 0x42].concat(new Array(9).fill(0)); fn[3 + 5] = 1;
+    assert.strictEqual(P.statusSummary(fn, 'high'), 'BDC light function=1 (not an LED measurement)');
+    assert(P.statusSummary([0x62, 0xD5, 0x42], 'high').includes('missing'));
+    assert.strictEqual(P.statusSummary(fn, 'constructor'), 'status unavailable');
+});
+test('Real TASU transport sends timed function and zero-duration stop with matching service responses', async () => {
+    const r = await tasu((args, emit) => { setImmediate(() => emit(0x40, [0x6E, 0xD5, 0x42])); return 'NO_ERROR'; });
+    await r.link.timed('high', 2000); await r.link.timed('high', 0);
+    assert(r.requests.every((x) => x.targetAddress === 0x40 && x.serviceID === 0x2E));
+    assert.deepStrictEqual(Array.from(r.requests[0].udsData), [0xD5, 0x42, 0, 5, 0, 200]);
+    assert.deepStrictEqual(Array.from(r.requests[1].udsData), [0xD5, 0x42, 0, 5, 0, 0]);
 });
 
 (async () => {

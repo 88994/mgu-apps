@@ -1,8 +1,8 @@
 {
   "id": "light_show",
   "title": "Light Show",
-  "description": "Native iDrive 7 strobe menu for BDC_G05. Six patterns, selectable front light pair, tempo and duration, separate screen preview and explicit OEM release. Experimental: physical lamp operation has not yet been tested on this vehicle.",
-  "version": "0.1.1",
+  "description": "Experimental ID7 light controller: timed BMW light functions for both lights together, a bounded 2-second test, BDC readback and explicit stop. Legacy digital-output route retained for diagnostics; no physical effect was observed with it on the reported G21.",
+  "version": "0.2.0",
   "vendor": "custom",
   "loggingId": "OAL9",
   "iconGlyph": "LS",
@@ -40,6 +40,11 @@
           "button",
           "BTN_STOP",
           "STOP / return lights to vehicle"
+        ],
+        [
+          "button",
+          "BTN_FUNCTION_TEST",
+          "2-second test: both selected lights"
         ],
         [
           "button",
@@ -123,7 +128,7 @@
         [
           "text3",
           "RESET_NOTICE",
-          "First check normal headlights and indicators with the vehicle switches. Continue only if normal operation is restored. This clears saved app state; it does not prove the IO release succeeded."
+          "First check normal headlights and indicators with the vehicle switches. Continue only if normal operation is restored. This clears saved app state; it does not verify physical lamp control or a successful stop."
         ],
         [
           "button",
@@ -139,6 +144,42 @@
     }
   ],
   "settings": [
+    {
+      "key": "route",
+      "label": "Light control",
+      "type": "choice",
+      "default": "timed",
+      "options": [
+        [
+          "timed",
+          "Both lights - timed function (new test)"
+        ],
+        [
+          "digital",
+          "Legacy left/right - no effect on tested G21"
+        ]
+      ]
+    },
+    {
+      "key": "timedPattern",
+      "label": "Pattern - both lights",
+      "type": "choice",
+      "default": "double",
+      "options": [
+        [
+          "together",
+          "Both together"
+        ],
+        [
+          "double",
+          "Double flash - both"
+        ],
+        [
+          "triple",
+          "Triple flash - both"
+        ]
+      ]
+    },
     {
       "key": "pattern",
       "label": "Pattern",
@@ -187,7 +228,7 @@
         ],
         [
           "position",
-          "Position lights"
+          "Position / side lights"
         ],
         [
           "fog",

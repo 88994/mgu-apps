@@ -44,6 +44,8 @@ class Link {
         return this.index;
     }
     async readOutputs() { return this.request(0x22, [0xE3, 0xB9]); }
+    async readFunctionStatus() { return this.request(0x22, P.FUNCTION_DID); }
+    async timed(lights, ms) { return this.request(0x2E, P.timedControl(lights, ms), ms === 0); }
     async session() { return this.request(0x10, [0x03]); }
     async set(output, on) { return this.request(0x2F, P.control(output, on)); }
     async keepalive() { return this.request(0x3E, [0x00]); }

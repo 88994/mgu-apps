@@ -1,137 +1,154 @@
-# Light Show 0.1.1
+# Light Show 0.2.0
 
-Stroboskop-App für BMW MGU iDrive 7, angelehnt an das Reel von bmwneva:
-https://www.instagram.com/reel/DfR0l0HxKNS/
+Experimentelle Stroboskop-App für BMW MGU iDrive 7, angelehnt an
+[das Reel von bmwneva](https://www.instagram.com/reel/DfR0l0HxKNS/).
+Eigenständige Implementierung, kein Originalcode aus dem Reel.
 
-Eigenständiger Nachbau der Funktion, kein Originalcode aus dem Reel.
+## Tatsächlicher Teststand
 
-## Installation
+Im gemeldeten G21-Test von **0.1.1** entstand **kein sichtbarer Lichteffekt**,
+weder mit laufendem noch mit abgestelltem Motor. Der BDC bestätigte zwar die
+Ausgangsbefehle und meldete nach dem ersten Einschalten für Fernlicht links den
+Statuswechsel `0` → `1`. Das ist kein Nachweis, dass eine LED leuchtet.
+Die allgemeine IO-Rückgabe wurde mit `NRC 22` abgelehnt. Nur das manuelle
+Bestätigen in Diagnostics löschte die gespeicherte Startsperre; dadurch wurde
+die Lichtansteuerung nicht repariert.
 
-Direkt aus GitHub: Im MGU Store die Quelle `NamelsMissing/mgu-apps`, Kanal **main**, aktualisieren und **Light Show** installieren.
+**0.2.0 ergänzt einen anderen, noch nicht im Fahrzeug bestätigten Ansteuerungsweg:**
+die zeitbegrenzte BMW-Leuchtenfunktion `D542`. Sie fordert beide Leuchten gemeinsam
+an und verwendet Zeit `0` als eigenen Stop-Auftrag. Dieser Weg benutzt keine
+allgemeine `E3B5`-IO-Rückgabe. Das abwechselnde Links-/Rechts-Blinken bleibt im
+alten Diagnoseweg verfügbar, ist am gemeldeten G21 aber weiterhin ohne Wirkung.
 
-Voraussetzung ist ein bereits eingerichteter MGU Store auf der MGU ID7.
+## Update und erster Test
 
-1. `LightShow_ID7_v0.1.0.zip` entpacken.
-2. Den enthaltenen Ordner `mgu-repo` auf die oberste Ebene eines USB-Sticks kopieren.
-3. Stick im Auto einstecken, im **MGU Store > USB > Light Show** installieren.
-4. App öffnen, Zündung einschalten, **P** wählen und **Check BDC connection** drücken.
-5. Zuerst **Preview on screen** ansehen. **Start vehicle lights** steuert die Fahrzeugleuchten an.
-6. **STOP / return lights to vehicle** beendet die Show und fordert die Rückgabe an das Fahrzeug an.
+1. Im MGU Store die Quelle `NamelsMissing/mgu-apps`, Kanal **main**, aktualisieren
+   und **Light Show 0.2.0** installieren.
+2. Zündung einschalten und im Stand **P** wählen. Ein laufender Motor ist keine
+   Startbedingung der App.
+3. Falls noch eine Startsperre aus 0.1.1 besteht: normale Beleuchtung mit den
+   Fahrzeugschaltern prüfen und in **Diagnostics → Normal lights checked – reset
+   saved stop lock** bestätigen. Das entfernt nur die gespeicherte Sperre.
+4. **Light pair: High beam** wählen und **2-second test: both selected lights**
+   drücken. Dieser Knopf fordert einmal zwei Sekunden Fernlicht über die neue
+   Leuchtenfunktion an, unabhängig von der eingestellten Show-Dauer.
+5. Die tatsächlichen Scheinwerfer beobachten. Erst wenn beide sichtbar reagieren,
+   die Muster mit **Light control: Both lights – timed function (new test)** und
+   **Start vehicle lights** testen.
+6. Bei ausbleibender Reaktion oder Fehler **Diagnostics** öffnen und das neue
+   Protokoll mit **Save diagnostic log** speichern.
 
-Der USB-Katalog enthält bereits das fertige Paket und dessen Prüfsumme. Es ist kein
-Build und kein Internetzugang im Auto erforderlich. Das Paket verwendet das SDK der
-Headunit. Der vorhandene Store muss Pakete aus einem USB-Katalog unterstützen.
+**Preview on screen** ist ausschließlich eine Bildschirmvorschau. Eine bestehende
+Show wird vor dem Öffnen beendet. Die App installiert keinen Hintergrunddienst
+und startet beim Booten keine Show.
 
-Die App installiert keinen Hintergrunddienst und startet keine Show beim Booten.
-Das native Menü funktioniert ohne GPU-Renderer; die Vorschau hat einen Software-Fallback.
+## Funktionen und Grenzen
 
-## Funktionen
+- Zeitbegrenzte gemeinsame Leuchtenfunktion: beide zusammen, Doppel- und Dreifachblitz.
+- Getrennter alter Ausgangsweg mit sechs Links-/Rechts-Mustern für Diagnosezwecke.
+- Auswahl Fernlicht, Tagfahrlicht, Standlicht oder Nebelscheinwerfer vorn.
+  Die neue Standlichtfunktion kann auch hintere Leuchten einschließen;
+  Nebelscheinwerfer müssen vorhanden sein.
+- Musterschritt 100 / 150 / 200 / 300 / 500 ms; Show-Dauer 5 / 15 / 30 / 60 Sekunden.
+  Jeder normale Einschaltauftrag im neuen Weg enthält höchstens 500 ms
+  Aktivierungszeit, der einzelne Funktionstest höchstens zwei Sekunden.
+- Stop bei Bewegung, Verlust von P, veralteter Geschwindigkeit, Verbindungsverlust,
+  Verlassen der App oder Änderung der Einstellungen.
+- Native Touch-/Controller-Bedienung, separate Vorschau und Diagnoseexport
+  `light-show-diagnostics.json` im App-Datenordner.
 
-- Natives iDrive-Menü mit Touch- und Controller-Bedienung.
-- Links/rechts abwechselnd, Doppelblitz, Dreifachblitz, beide zusammen,
-  Kreuzimpuls und links/beide/rechts.
-- Lichtpaar: Fernlicht, Tagfahrlicht, Positionslicht oder Nebelscheinwerfer vorn.
-- Mindestzeit pro Musterschritt: 100 / 150 / 200 / 300 / 500 ms.
-- Automatisches Ende nach 5 / 15 / 30 / 60 Sekunden.
-- Separate, klar beschriftete Bildschirmvorschau ohne Lichtbefehle.
-- Stop bei Verlust von P, Bewegung, fehlender aktueller Geschwindigkeit,
-  Verbindungsverlust, Verlassen der App oder Änderung der Einstellungen.
-- Diagnoseansicht und Export von `light-show-diagnostics.json` im App-Datenordner.
+Jeder Diagnosebefehl wird abgewartet. Langsame Antworten verlangsamen das Muster;
+es werden keine verspäteten Impulse nachgeholt. Die App zeigt bestätigte Befehle
+und BDC-Statuswerte an. Sie misst nicht die physische Helligkeit. Auch ein
+bestätigter Stop-Auftrag ist zunächst eine Protokollbestätigung.
 
-Die Diagnoseantworten bestimmen das tatsächlich erreichbare Tempo. Die App wartet
-auf jede Antwort, überspringt keine Fehler und holt verspätete Schritte nicht mit
-einem Befehlsstoß nach. Links und rechts werden nacheinander gesetzt, deshalb sind
-gleichzeitige Blitze nicht taktgenau synchron. Die Diagnose zeigt die gemessene Schrittzeit.
+## Protokoll und Offline-Prüfung
 
-## Kompatibilität und tatsächlicher Teststand
+Nur BDC_G05, Adresse `0x40`, SGBD-Index `0F2680`, wird zugelassen.
+Die Identität wird vor der Ansteuerung gelesen; andere Varianten werden abgewiesen.
+Eine G21-Modellbezeichnung ersetzt diese Prüfung nicht.
 
-**Experimentell: Es fand noch kein Test der physischen Leuchten im Fahrzeug statt.**
+Die Telegramme wurden aus der eigenen `Ecu.zip / Ecu/BDC_G05.prg`, Revision
+36.001, ermittelt und durch Ausführung der originalen Job-Bytecodes gegen eine
+aufzeichnende Schnittstelle gegengeprüft. Dabei bestand keine Fahrzeugverbindung.
+`protocol-evidence.json` enthält die PRG-Prüfsumme, 17 Referenzen für den alten
+Ausgangsweg und 28 für die neue zeitbegrenzte Funktion. Die für die neue Prüfung
+nötige Korrektur der 32-Bit-Vorzeichenbehandlung im lokalen Forschungsinterpreter
+ist dort dokumentiert. Dieser Interpreter ist keine App-Abhängigkeit.
 
-Implementiert für BDC_G05, Diagnoseadresse `0x40`, SGBD-Index `0F2680`.
-Andere Varianten werden nach dem Auslesen ihrer Identität abgewiesen. Dass das
-Fahrzeug ein G21 ist, ersetzt diese Prüfung nicht. Nebelscheinwerfer müssen verbaut sein.
-Die tatsächliche Reaktion und das maximale Tempo hängen außerdem von BDC- und
-Scheinwerfer-Software ab.
-
-Die Telegramme wurden aus der bereitgestellten `Ecu.zip / Ecu/BDC_G05.prg`,
-Revision 36.001, abgeleitet und durch Ausführung des originalen `STEUERN_IO`-Jobs
-gegen eine ausschließlich aufzeichnende Schnittstelle gegengeprüft. Keine Verbindung
-zu einem Fahrzeug wurde dabei hergestellt. `protocol-evidence.json` enthält
-Prüfsumme und die 17 aufgezeichneten Referenztelegramme.
-
-Beispiele der tatsächlich verwendeten UDS-Nutzdaten:
-
-| Aktion | Telegramm |
+| Aktion | UDS-Nutzdaten |
 | --- | --- |
 | BDC identifizieren | `22 F1 50` |
 | Temporäre Diagnosesitzung | `10 03` |
-| Fernlicht links ein | `2F E3 B5 03 07 01 C0` |
-| Fernlicht rechts aus | `2F E3 B5 03 08 00 C0` |
-| Steuerung zurückgeben | `2F E3 B5 00 FF` |
-| Standardsitzung wiederherstellen | `10 01` |
+| Neue Fernlichtfunktion, zwei Sekunden | `2E D5 42 00 05 00 C8` |
+| Stop-Auftrag derselben Funktion | `2E D5 42 00 05 00 00` |
+| Leuchtenfunktionsstatus lesen | `22 D5 42` |
+| Alter Ausgang Fernlicht links ein | `2F E3 B5 03 07 01 C0` |
+| Alte allgemeine IO-Rückgabe, im Fahrzeug abgelehnt | `2F E3 B5 00 FF` |
+| Standardsitzung anfordern | `10 01` |
 
-`C0` und `FF` gehören zu den UDS-Nutzdaten. Sie sind keine Prüfsummen.
-Es erfolgt keine Codierung, kein Flashen und keine dauerhafte Änderung von Lichtparametern.
-Eine positive BDC-Antwort ist eine Bestätigung des Diagnosebefehls; sie ist keine
-Messung, ob die Lampe tatsächlich leuchtet.
+Für `D542` sind Funktion und Zeit jeweils zwei Bytes mit höchstwertigem Byte
+zuerst; die Zeit ist in Hundertstelsekunden codiert. Es erfolgt kein automatischer
+Wechsel zwischen den beiden Ansteuerungswegen nach einem Fehler.
 
-## Stop und Wiederherstellung
+## Stop und gespeicherte Startsperre
 
-Stop markiert den Ablauf sofort als abgebrochen. Ein bereits gesendeter Befehl wird
-noch abgewartet, dann wird `returnControlToECU` gesendet und die Standardsitzung
-angefordert. Ein späterer Einschaltbefehl wird nicht mehr in die Warteschlange gestellt.
+Stop setzt sofort das Abbruchsignal. Ein laufender Diagnosebefehl wird abgewartet,
+dann folgt der zum gespeicherten Ansteuerungsweg passende Stop-Auftrag und
+anschließend die Standardsitzung. Danach werden keine Einschaltbefehle nachgereicht.
 
-Vor dem ersten Sitzungswechsel wird eine Wiederherstellungsmarkierung im persistenten
-App-Datenordner geschrieben. Schlägt das Schreiben fehl, wird nicht angesteuert.
-Erst nach bestätigter Rückgabe und Standardsitzung wird sie gelöscht. Nach einem
-Neustart versucht die App bei vorhandener Markierung die Rückgabe erneut, sobald
-die Diagnoseverbindung verfügbar ist. Sie startet dabei keine Show.
+Vor jedem Sitzungswechsel wird eine Wiederherstellungsmarkierung im App-Datenordner
+gespeichert. Sie enthält jetzt auch Ansteuerungsweg und Leuchtenfunktion.
+Schlägt das Speichern fehl, wird nicht angesteuert. Erst nach beiden positiven
+Antworten für Stop und Standardsitzung wird die Markierung automatisch gelöscht.
+Nach einem Neustart wird bei vorhandener Verbindung nur die passende Rückgabe
+versucht. Eine alte Markierung aus 0.1.1 wird weiterhin mit der alten IO-Rückgabe
+behandelt; sie wird beim Update nicht stillschweigend gelöscht.
 
-Bei hartem Stromverlust oder einem sofortigen Prozessabbruch lässt sich die Rückgabe
-nicht mehr zuverlässig abwarten. Während der Show wird eine temporäre UDS-Sitzung
-mit TesterPresent gehalten. Die konkrete Rückfallzeit des BDC nach Kommunikationsverlust
-ist im Fahrzeug noch zu messen. Die Software behauptet hierfür keine garantierte Zeit.
+Bei **Timed stop pending** oder **OEM release pending** bleiben neue Starts gesperrt.
+Die manuelle Bestätigung in Diagnostics verlangt Stand/P, eine passende BDC-Identität,
+eine positive Standardsitzungsantwort und die vorherige Lichtprüfung durch den
+Nutzer. Sie bestätigt keine erfolgreiche physische Rückgabe.
 
-Bei **OEM release pending** bleibt die Markierung bestehen und ein neuer Start wird
-blockiert. **STOP** versucht die Rückgabe erneut. Bei weiterhin bestehendem Fehler
-die Diagnose exportieren und die Reaktion der Beleuchtung prüfen.
+Bei hartem Stromverlust kann die App keine Antwort mehr abwarten. Die neue Funktion
+enthält zwar eine endliche Aktivierungszeit; die tatsächliche Rückfallreaktion und
+der Stop-Auftrag müssen am Fahrzeug noch bestätigt werden.
 
 ## Quellcode und Build
 
-Das ZIP enthält unter `source/` die neuen App-Dateien sowie Paketierung und Tests.
-Die App ist unter https://github.com/NamelsMissing/mgu-apps/tree/main/apps/light_show integriert.
-Der Diagnose-Transport ist app-lokal als `tasu.js` enthalten, damit die vorhandenen Apps unverändert bleiben.
-Geprüfter Basisstand: `180537a0bdf39163046a6855e7928eb35bb47c7b`.
+[Repository](https://github.com/NamelsMissing/mgu-apps/tree/main/apps/light_show).
+Der Diagnose-Transport liegt app-lokal in `tasu.js`; andere Apps werden nicht verändert.
 
 ```sh
 node kit/tools/extract_sdk.js /pfad/zur/eigenen/javascript/app.js oap-sdk
-python3 kit/tools/build.py light_show
+python3 tools/build_store_app.py light_show
 node kit/tools/test_light_show.js
+```
+
+Für einen optionalen USB-Katalog nach Build und Tests:
+
+```sh
 python3 kit/tools/package_light_show.py
 ```
 
-Die Paketierung erzeugt einen USB-Katalog mit einem SDK-freien OAP-Paket und ein ZIP.
-Die vollständige Ecu.zip, PRG-Dateien und BMW-SDK-Dateien werden nicht mitgeliefert.
-Der private lokale Build benutzt das vom Nutzer bereitgestellte x_call-Archiv;
-der MGU Store erzeugt das SDK für die Installation aus der eigenen Firmware.
+Der erzeugte Katalog unter `dist/light-show-usb/mgu-repo` kann auf die oberste Ebene
+eines USB-Sticks kopiert werden. Der Store muss USB-Kataloge unterstützen.
+BMW-SDK-Dateien und vollständige PRGs werden nicht mitgeliefert. Der private Build
+benutzt das eigene x_call-SDK; bei Installation aus dieser GitHub-Quelle ergänzt
+der MGU Store das SDK aus der eigenen Firmware.
 
-Für die Vorschau ohne Fahrzeug:
+Die Vorschau kann ohne Fahrzeug geprüft werden:
 
 ```sh
-node kit/tools/emu.js light_show
+node kit/tools/preview.js dist/light_show qa/light_show BTN_PREVIEW render
 ```
 
-Das native Hauptmenü zeichnet die BMW-HMI. Der Emulator dieses Basisprojekts
-bildet native Menüs nur eingeschränkt ab; die Vorschau kann mit
-`node kit/tools/preview.js dist/light_show preview BTN_PREVIEW render` geprüft werden.
+Das native Hauptmenü zeichnet die BMW-HMI. Der Emulator stellt native Menüs nur
+eingeschränkt dar; ein erfolgreicher Vorschau-Test belegt keine Fahrzeugfunktion.
 
 ## Herkunft
 
-MGU App Kit und Diagnose-Transport: cauliflowermossgrape/idrive7-apps (MIT).
-Store und USB-Katalogformat: robertnisipeanu/mgu-store.
-Referenzprüfung der eigenen PRG-Datei: EdiabasX von emdzej; nicht Bestandteil der
-App und keine Laufzeitabhängigkeit. Siehe `SOURCE-NOTES.txt` im ZIP.
-
-## 0.1.1: diagnosis after the first vehicle report
-
-The supplied video shows 46 positive control acknowledgements and NRC22 on IO return, followed by a positive default-session reply. Physical high-beam operation was reported absent. This update does not claim to solve that routing issue. It records raw E3B9 output status before and after the first ON, preserves the original show error, and provides a separate manual acknowledgement screen to clear a saved stop lock only after the user has checked normal vehicle lighting. Identity, standstill/P and a positive default-session reply remain mandatory. No alternate actuator commands or communication-disable requests are added.
+MGU App Kit und TASU-Transport: cauliflowermossgrape/idrive7-apps (MIT), geprüfter
+Basisstand `180537a0bdf39163046a6855e7928eb35bb47c7b`.
+Store und USB-Format: robertnisipeanu/mgu-store.
+Referenzanalyse: EdiabasX von emdzej, nicht Bestandteil der installierten App.

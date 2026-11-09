@@ -1,11 +1,19 @@
 'use strict';
 
 // Derived from the supplied BDC_G05.prg, revision 36.001. The START and
-// RCTECU telegrams were independently captured by executing its STEUERN_IO
-// bytecode against a recording-only interface. See protocol-evidence.json.
+// RCTECU telegrams and the timed SG_FUNKTIONEN requests were captured from
+// original PRG bytecode against a recording-only interface. This verifies
+// encoding, not physical lamp operation. See protocol-evidence.json.
 const ADDRESS = 0x40;
 const INDEX = '0F2680';
 const DID = [0xE3, 0xB5];
+const FUNCTION_DID = [0xD5, 0x42];
+const FUNCTIONS = {
+    high: { id: 5, name: 'High beam function (both)' },
+    drl: { id: 4, name: 'Daytime light function (both)' },
+    position: { id: 1, name: 'Sidelight function (front/rear)' },
+    fog: { id: 8, name: 'Front fog light function (both)' },
+};
 const PAIRS = {
     high: { name: 'High beam', left: 0x07, right: 0x08 },
     drl: { name: 'Daytime running lights', left: 0x03, right: 0x04 },
@@ -21,13 +29,45 @@ const PATTERNS = {
     cross: { name: 'Cross pulse', steps: [[1, 0], [0, 0], [0, 1], [0, 0], [1, 1], [0, 0], [1, 1], [0, 0]] },
     wave: { name: 'Left - both - right', steps: [[1, 0], [1, 1], [0, 1], [0, 0]] },
 };
+const BOTH_PATTERNS = {
+    together: { name: 'Both together', steps: [[1, 1], [0, 0]] },
+    double: { name: 'Double flash (both)', steps: [[1, 1], [0, 0], [1, 1], [0, 0], [0, 0], [0, 0]] },
+    triple: { name: 'Triple flash (both)', steps: [[1, 1], [0, 0], [1, 1], [0, 0], [1, 1], [0, 0], [0, 0], [0, 0]] },
+};
+function pattern(c) {
+    if (c.test) return { name: '2-second function test (both)', steps: [[1, 1]] };
+    return c.route === 'timed' ? BOTH_PATTERNS[c.pattern] : PATTERNS[c.pattern];
+}
 
 function settings(get) {
-    const pattern = get('pattern'), lights = get('lights');
+    // Legacy callers without a route keep the old encoder. The app schema
+    // explicitly defaults to timed; upgrading saved settings inherits that.
+    const route = get('route') || 'digital';
+    const chosen = route === 'timed' ? get('timedPattern') : get('pattern'), lights = get('lights');
     const tempo = Number(get('tempo')), seconds = Number(get('duration'));
-    if (!PATTERNS[pattern] || !PAIRS[lights] || [100, 150, 200, 300, 500].indexOf(tempo) < 0
+    if (['timed', 'digital'].indexOf(route) < 0
+        || !Object.prototype.hasOwnProperty.call(route === 'timed' ? BOTH_PATTERNS : PATTERNS, chosen)
+        || !Object.prototype.hasOwnProperty.call(PAIRS, lights) || [100, 150, 200, 300, 500].indexOf(tempo) < 0
         || [5, 15, 30, 60].indexOf(seconds) < 0) throw new Error('Invalid show settings - choose the values again');
-    return { pattern, lights, tempo, seconds };
+    return { route, pattern: chosen, lights, tempo, seconds };
+}
+function timedControl(lights, durationMs) {
+    if (!Object.prototype.hasOwnProperty.call(FUNCTIONS, lights) || !Number.isInteger(durationMs)
+        || durationMs < 0 || durationMs > 2000 || durationMs % 10) throw new Error('Invalid timed light function');
+    const ticks = durationMs / 10;
+    // ARG_0xD542_D: ELEMENT s16 high byte first, ZEIT s16 = seconds * 100.
+    // No persistent duration, IO control parameter or enable mask is used.
+    return FUNCTION_DID.concat([0, FUNCTIONS[lights].id, ticks >> 8, ticks & 255]);
+}
+function statusSummary(reply, lights) {
+    if (!Array.isArray(reply) || reply[0] !== 0x62 || !Object.prototype.hasOwnProperty.call(PAIRS, lights)) return 'status unavailable';
+    const value = (i) => reply.length > 3 + i ? (reply[3 + i] === 0 ? '0' : reply[3 + i] === 1 ? '1' : 'unknown') : 'missing';
+    if (reply[1] === 0xE3 && reply[2] === 0xB9) {
+        const p = PAIRS[lights];
+        return 'BDC output L=' + value(p.left) + ' R=' + value(p.right) + ' (not an LED measurement)';
+    }
+    if (reply[1] === 0xD5 && reply[2] === 0x42) return 'BDC light function=' + value(FUNCTIONS[lights].id) + ' (not an LED measurement)';
+    return 'unexpected status identifier';
 }
 function control(output, on) {
     if (OUTPUTS.indexOf(output) < 0 || (on !== 0 && on !== 1)) throw new Error('Unsupported light command');
@@ -42,4 +82,5 @@ function indexOf(data) {
 }
 function hex(data) { return data.map((v) => ('0' + v.toString(16)).slice(-2)).join(' ').toUpperCase(); }
 
-module.exports = { ADDRESS, INDEX, DID, PAIRS, PATTERNS, settings, control, release, indexOf, hex };
+module.exports = { ADDRESS, INDEX, DID, FUNCTION_DID, FUNCTIONS, PAIRS, PATTERNS, BOTH_PATTERNS,
+    pattern, settings, timedControl, statusSummary, control, release, indexOf, hex };

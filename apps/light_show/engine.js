@@ -2,7 +2,7 @@
 const P = require('./protocol');
 
 // One serialized conversation. Stop sets the cancellation flag immediately;
-// a possibly accepted in-flight command must finish before OEM is sent.
+// a possibly accepted in-flight command must finish before stop is sent.
 // No interval callback can queue another lamp command behind Stop.
 class Engine {
     constructor(o) {
@@ -12,16 +12,22 @@ class Engine {
         this.state = 'IDLE'; this.note = 'Ready'; this.mask = [0, 0];
         this.sent = 0; this.stepMs = 0; this.run = null; this.cancel = false;
         this.releaseConfirmed = false; this.stopRequested = false; this.outputSamples = []; this.originalFault = null;
+        this.control = { route: 'digital', lights: null }; this.stopConfirmed = false;
     }
     status() {
         return { state: this.state, note: this.note, mask: this.mask.slice(), sent: this.sent,
-            stepMs: this.stepMs, releaseConfirmed: this.releaseConfirmed,
+            stepMs: this.stepMs, releaseConfirmed: this.releaseConfirmed, stopConfirmed: this.stopConfirmed,
+            control: Object.assign({}, this.control),
             remainingSeconds: this.deadline ? Math.max(0, Math.ceil((this.deadline - this.now()) / 1000)) : 0 };
     }
     update(state, note) { this.state = state; this.note = note; this.changed(); }
     async sampleOutputs(label) {
-        if (!this.link.readOutputs) return;
-        try { this.outputSamples.push({ label, reply: P.hex(await this.link.readOutputs()) }); }
+        const read = this.control.route === 'timed' ? this.link.readFunctionStatus : this.link.readOutputs;
+        if (!read) return;
+        try {
+            const reply = await read.call(this.link);
+            this.outputSamples.push({ label, reply: P.hex(reply), summary: P.statusSummary(reply, this.control.lights) });
+        }
         catch (e) { this.outputSamples.push({ label, error: String(e.message || e) }); }
         this.changed();
     }
@@ -34,8 +40,8 @@ class Engine {
             if (this.guard.reason()) throw new Error(this.guard.reason());
             await this.link.defaultSession();
             if (this.journal.pending()) this.journal.clear();
-            this.releaseConfirmed = false;
-            this.update('IDLE', 'Saved stop lock cleared after user light check; OEM IO release remains unconfirmed');
+            this.releaseConfirmed = false; this.stopConfirmed = false;
+            this.update('IDLE', 'Saved stop lock cleared after user light check; physical lamp control remains unverified');
         } catch (e) { this.update('ERROR', String(e.message || e)); }
         finally { this.run = null; done(); }
     }
@@ -44,19 +50,34 @@ class Engine {
         this.update('CHECKING', 'Reading BDC identity');
         let resolve;
         this.run = new Promise((r) => { resolve = r; });
-        try { await this.link.identify(); this.update('IDLE', 'BDC_G05 identified - lamp operation untested'); }
+        try {
+            await this.link.identify();
+            this.update(this.journal.pending() ? 'BLOCKED' : 'IDLE', this.journal.pending()
+                ? 'BDC identified; saved stop lock is still pending' : 'BDC_G05 identified; physical lamp effect not verified');
+        }
         catch (e) { this.update('ERROR', String(e.message || e)); }
         finally { this.run = null; resolve(); }
     }
     start(config) {
         if (this.run) return this.run;
         // Revalidate at the command boundary, including settings loaded from disk.
-        try { config = P.settings((k) => ({ pattern: config.pattern, lights: config.lights, tempo: config.tempo, duration: config.seconds })[k]); }
+        try { config = P.settings((k) => ({ route: config.route, timedPattern: config.pattern,
+            pattern: config.pattern, lights: config.lights, tempo: config.tempo, duration: config.seconds })[k]); }
         catch (e) { this.update('ERROR', e.message); return Promise.resolve(); }
+        return this._start(config);
+    }
+    testFunction(lights) {
+        try { P.timedControl(lights, 2000); }
+        catch (e) { this.update('ERROR', e.message); return Promise.resolve(); }
+        return this._start({ route: 'timed', pattern: 'test', lights, tempo: 2000, seconds: 2, test: true });
+    }
+    _start(config) {
         const reason = this.guard.reason();
+        if (this.run) return this.run;
         if (reason) { this.update('BLOCKED', reason); return Promise.resolve(); }
-        if (this.journal.pending()) { this.update('ERROR', 'OEM release pending - press STOP first'); return Promise.resolve(); }
+        if (this.journal.pending()) { this.update('ERROR', 'Saved stop lock pending - use STOP or Diagnostics'); return Promise.resolve(); }
         this.cancel = false; this.stopRequested = false; this.stopReason = null; this.releaseConfirmed = false;
+        this.stopConfirmed = false; this.control = { route: config.route || 'digital', lights: config.lights };
         this.sent = 0; this.stepMs = 0; this.mask = [0, 0]; this.outputSamples = []; this.originalFault = null;
         this.update('STARTING', 'Checking BDC_G05');
         let resolve;
@@ -79,11 +100,12 @@ class Engine {
             if (!this.allowed()) return;
             // A durable marker is written BEFORE any request that can change the
             // session/lamps. If persistence fails, no control request is sent.
-            this.journal.mark(this.link.index); dirty = true;
+            this.journal.mark(this.link.index, this.control); dirty = true;
             await this.link.session();
             await this.sampleOutputs('Before control');
             let afterSampled = false;
             if (!this.allowed()) return;
+            if (c.route === 'timed') { await this._timedLoop(c); return; }
             const pair = P.PAIRS[c.lights], pattern = P.PATTERNS[c.pattern].steps;
             const outputs = [pair.left, pair.right];
             let previous = [null, null], step = 0, keepAt = this.now(), lastStep = null;
@@ -116,13 +138,37 @@ class Engine {
             this.deadline = 0;
             if (dirty) {
                 const released = await this._release();
-                if (released) this.update(fault ? 'ERROR' : 'IDLE', fault || this.stopReason || 'Show finished - vehicle controls lights');
+                if (released) this.update(fault ? 'ERROR' : 'IDLE', fault || this.stopReason
+                    || (c.route === 'timed' ? 'Timed function stopped; physical effect not verified' : 'BDC IO return acknowledged; physical effect not verified'));
             } else this.update(fault ? 'ERROR' : 'IDLE', fault || this.stopReason || 'Stopped before lamp control');
             this.stopReason = null;
         }
     }
+    async _timedLoop(c) {
+        const pat = P.pattern(c), fn = P.FUNCTIONS[c.lights];
+        this.deadline = this.now() + c.seconds * 1000;
+        let step = 0, keepAt = this.now(), afterSampled = false, lastStep = null;
+        this.update('RUNNING', pat.name + ' - ' + fn.name);
+        while (this.allowed() && this.now() < this.deadline) {
+            const begin = this.now(), on = pat.steps[step % pat.steps.length][0] === 1;
+            // Request a finite ECU activation time: normal pulses <= 500 ms,
+            // the deliberate single-test button <= 2 s. Physical behavior still
+            // requires vehicle verification. Never a permanent duration value.
+            const ms = on ? Math.min(c.tempo, Math.floor((this.deadline - begin) / 10) * 10) : 0;
+            if (on && ms <= 0) break;
+            await this.link.timed(c.lights, ms); this.sent++;
+            this.mask = on ? [1, 1] : [0, 0]; this.changed();
+            if (on && !afterSampled && this.allowed()) { afterSampled = true; await this.sampleOutputs('After first timed ON'); }
+            if (!this.allowed() || this.now() >= this.deadline) break;
+            if (this.now() - keepAt >= 1000) { await this.link.keepalive(); keepAt = this.now(); }
+            if (lastStep !== null) this.stepMs = this.now() - lastStep;
+            lastStep = this.now(); step++;
+            const wait = Math.max(0, c.tempo - (this.now() - begin));
+            for (let slept = 0; slept < wait && !this.cancel; slept += 25) await this.sleep(Math.min(25, wait - slept));
+        }
+    }
     stop(reason) {
-        this.cancel = true; this.stopRequested = true; this.stopReason = reason || 'Stopped - vehicle controls lights';
+        this.cancel = true; this.stopRequested = true; this.stopReason = reason || 'Stop requested';
         const wasChecking = this.state === 'CHECKING';
         if (this.run) return this.run.then(() => {
             // identify() may have been running; a recovery marker still needs
@@ -140,21 +186,33 @@ class Engine {
     async _recover() {
         try {
             await this.link.identify();
-            if (await this._release()) this.update('IDLE', 'OEM release confirmed');
-        } catch (e) { this.update('ERROR', 'OEM release pending: ' + String(e.message || e)); }
+            const saved = this.journal.value;
+            if (saved) {
+                if (saved.corrupted || (saved.route && ['timed', 'digital'].indexOf(saved.route) < 0)) throw new Error('Invalid recovery record; check normal lights first');
+                if (saved.route === 'timed') P.timedControl(saved.lights, 0);
+                this.control = { route: saved.route || 'digital', lights: saved.lights || null };
+            }
+            if (await this._release()) this.update('IDLE', this.control.route === 'timed' ? 'Timed stop acknowledged' : 'OEM IO return acknowledged');
+        } catch (e) { this.update('ERROR', 'Saved stop lock pending: ' + String(e.message || e)); }
     }
     async _release() {
-        this.update('STOPPING', 'Returning light control to vehicle');
+        this.update('STOPPING', 'Sending stop and default-session requests');
         let error = null, released = false;
-        // Always attempt the session return even if 2F times out. A positive
+        // Always attempt the session return even if the stop request times out. A positive
         // session reply alone is not presented as proof of physical lamp state.
-        try { await this.link.release(); released = true; } catch (e) { error = e.message || String(e); }
+        try {
+            if (this.control.route === 'timed') await this.link.timed(this.control.lights, 0);
+            else await this.link.release();
+            released = true;
+        } catch (e) { error = e.message || String(e); }
         try { await this.link.defaultSession(); } catch (e) { error = error || e.message || String(e); }
-        this.mask = [0, 0]; this.releaseConfirmed = released;
+        this.mask = [0, 0]; this.stopConfirmed = released;
+        this.releaseConfirmed = this.control.route === 'digital' && released;
         if (!error && released) {
             try { this.journal.clear(); } catch (e) { error = 'Could not clear recovery marker: ' + e.message; }
         }
-        if (error) { this.update('ERROR', (this.originalFault ? 'Start/show: ' + this.originalFault + ' | ' : '') + 'OEM release pending: ' + error); return false; }
+        if (error) { this.update('ERROR', (this.originalFault ? 'Start/show: ' + this.originalFault + ' | ' : '')
+            + (this.control.route === 'timed' ? 'Timed stop pending: ' : 'OEM release pending: ') + error); return false; }
         return true;
     }
 }

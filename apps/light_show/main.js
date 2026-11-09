@@ -13,11 +13,18 @@ mgu.run({
     async start(ctx) {
         const { ui, settings, log } = ctx;
         const journal = new Journal(ctx.dataDir);
-        let engine, link, guard, preview = null, lastStatus = '', hiddenTimer = null;
+        let engine, link, guard, preview = null, lastStatus = '', hiddenTimer = null, lastRoute = null;
         const config = () => P.settings((k) => settings.get(k));
         const refresh = () => {
             if (!engine) return;
-            const s = engine.status(), text = s.state + ': ' + s.note;
+            const s = engine.status(), text = (s.state === 'RUNNING' ? 'COMMANDS' : s.state) + ': ' + s.note;
+            const route = settings.get('route');
+            if (route !== lastRoute) {
+                lastRoute = route;
+                ui.visible('SET_PATTERN', route === 'digital');
+                ui.visible('SET_TIMEDPATTERN', route === 'timed');
+                ui.text('NOTICE', route === 'timed' ? 'NEW TEST: both lights together; physical effect not verified' : 'BDC outputs: no physical high-beam effect observed on the reported G21');
+            }
             const line = text + (s.state === 'RUNNING' ? ' (' + s.remainingSeconds + ' s)' : '');
             if (line !== lastStatus) { lastStatus = line; ui.text('STATUS', line); }
             if (ui.isVisible('DIAGNOSTICS')) ui.text('DIAG_TEXT', diagnostics());
@@ -36,32 +43,34 @@ mgu.run({
         function diagnostics() {
             const s = engine.status(), g = guard.snapshot();
             return [
-                'Light Show 0.1.1 - EXPERIMENTAL / no vehicle test yet',
+                'Light Show 0.2.0 - EXPERIMENTAL / physical effect not verified',
                 'State: ' + s.state + ' - ' + s.note,
                 'TASU: ' + (link.available ? 'available' : 'unavailable'),
                 'BDC address: 40 | SGBD: ' + (link.index || 'not read') + ' | required: ' + P.INDEX,
                 'Speed: ' + (g.speedKmh === null ? 'unknown' : g.speedKmh.toFixed(2) + ' km/h') + ' | age: ' + g.speedAgeMs + ' ms',
                 'Selector: ' + (g.stage || 'unknown') + ' | ' + (g.blockedBy || 'P and stationary'),
-                'Confirmed commands: ' + s.sent + ' | measured step: ' + s.stepMs + ' ms',
-                'OEM release response: ' + (s.releaseConfirmed ? 'confirmed' : 'not confirmed this run'),
-                'Recovery marker: ' + (journal.pending() ? 'PENDING - press STOP' : 'clear'),
+                'Acknowledged commands (not proof of light): ' + s.sent + ' | measured step: ' + s.stepMs + ' ms',
+                'Legacy IO return response: ' + (s.releaseConfirmed ? 'confirmed' : 'not confirmed this run'),
+                'Stop command: ' + (s.stopConfirmed ? 'acknowledged' : 'not acknowledged') + ' | route: ' + s.control.route,
+                'Recovery marker: ' + (journal.pending() ? 'PENDING - STOP or checked-light recovery' : 'clear'),
                 'A positive diagnostic response is not a measured lamp state.',
                 'Original start/show error: ' + (engine.originalFault || 'none recorded'),
                 'Output status (raw, not physical proof):',
-            ].concat(engine.outputSamples.map((x) => x.label + ': ' + (x.reply || x.error))).concat([
+            ].concat(engine.outputSamples.map((x) => x.label + ': ' + (x.summary || x.error || 'raw only') + '\n' + (x.reply || ''))).concat([
                 '', 'Recent diagnostic requests:',
             ]).concat(link.trace.slice(-14).map((r) => r.at.slice(11, 23) + ' > ' + r.tx + ' < ' + (r.rx || r.error || 'waiting'))).join('\n');
         }
         function saveLog() {
             try {
-                const report = { app: 'light_show', version: '0.1.1', at: new Date().toISOString(),
-                    vehicleTested: false, status: engine.status(), guard: guard.snapshot(),
+                const report = { app: 'light_show', version: '0.2.0', at: new Date().toISOString(),
+                    physicalEffectVerified: false, status: engine.status(), guard: guard.snapshot(),
                     settings: config(), bdcIndex: link.index, recoveryPending: journal.pending(), originalFault: engine.originalFault, outputSamples: engine.outputSamples, trace: link.trace };
                 const file = path.join(ctx.dataDir, 'light-show-diagnostics.json');
                 fs.writeFileSync(file + '.tmp', JSON.stringify(report, null, 2)); fs.renameSync(file + '.tmp', file);
                 ui.text('DIAG_TEXT', diagnostics() + '\n\nSaved: ' + file);
             } catch (e) { ui.text('DIAG_TEXT', diagnostics() + '\n\nLog save failed: ' + e.message); }
         }
+        ui.onClick('BTN_FUNCTION_TEST', () => { preview = null; return engine.testFunction(settings.get('lights')); });
         ui.onClick('BTN_START', () => {
             preview = null;
             try { engine.start(config()); } catch (e) { engine.update('ERROR', e.message); }

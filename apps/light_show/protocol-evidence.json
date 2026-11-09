@@ -5,7 +5,6 @@
   "method": "Original STEUERN_IO bytecode executed with EdiabasX recording-only interface, aborted at first outgoing request; no real vehicle was contacted. BMW FAST header removed; no checksum removed.",
   "identitySource": "idrive7-apps/apps/live_data/builtin/sgbd_index.json at 180537a0bdf39163046a6855e7928eb35bb47c7b",
   "supportedIndex": "0F2680",
-  "vehicleTested": false,
   "captured": [
     {
       "pair": "high",
@@ -392,5 +391,614 @@
         255
       ]
     }
-  ]
+  ],
+  "timedFunction": {
+    "source": "SG_FUNKTIONEN LEUCHTEN_FUNKTION / ARG_0xD542_D / TAB_LEUCHTEN_FUNKTION_ARG",
+    "method": "Original PRG bytecode executed offline against recording-only interface. Research interpreter 0.8.0 fix2flt 32-bit sign-extension corrected from raw-(1 << bits) to raw-Math.pow(2,bits); required for signed range checks; no PRG table or bytecode edits. This validates encoded requests, not real ECU behavior. No interpreter is shipped in the app.",
+    "vehicleTested": false,
+    "captured": [
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 0,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "0"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          0
+        ]
+      },
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 100,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "0.1"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          10
+        ]
+      },
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 150,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "0.15"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          15
+        ]
+      },
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 200,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "0.2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          20
+        ]
+      },
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 300,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "0.3"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          30
+        ]
+      },
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 500,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "0.5"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          50
+        ]
+      },
+      {
+        "lights": "high",
+        "functionId": 5,
+        "durationMs": 2000,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "5",
+          "2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          5,
+          0,
+          200
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 0,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "0"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          0
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 100,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "0.1"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          10
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 150,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "0.15"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          15
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 200,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "0.2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          20
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 300,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "0.3"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          30
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 500,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "0.5"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          50
+        ]
+      },
+      {
+        "lights": "drl",
+        "functionId": 4,
+        "durationMs": 2000,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "4",
+          "2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          4,
+          0,
+          200
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 0,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "0"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          0
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 100,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "0.1"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          10
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 150,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "0.15"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          15
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 200,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "0.2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          20
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 300,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "0.3"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          30
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 500,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "0.5"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          50
+        ]
+      },
+      {
+        "lights": "position",
+        "functionId": 1,
+        "durationMs": 2000,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "1",
+          "2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          1,
+          0,
+          200
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 0,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "0"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          0
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 100,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "0.1"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          10
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 150,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "0.15"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          15
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 200,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "0.2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          20
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 300,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "0.3"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          30
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 500,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "0.5"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          50
+        ]
+      },
+      {
+        "lights": "fog",
+        "functionId": 8,
+        "durationMs": 2000,
+        "job": "STEUERN",
+        "arguments": [
+          "ARG",
+          "LEUCHTEN_FUNKTION",
+          "8",
+          "2"
+        ],
+        "uds": [
+          46,
+          213,
+          66,
+          0,
+          8,
+          0,
+          200
+        ]
+      }
+    ]
+  },
+  "captureVehicleConnected": false,
+  "vehicleObservations": {
+    "route": "digital",
+    "testedVersion": "0.1.1",
+    "reportedVehicle": "G21",
+    "highBeamEffectObserved": false,
+    "controlAcknowledgementsObserved": true,
+    "highBeamLeftReportedStatusBefore": 0,
+    "highBeamLeftReportedStatusAfterFirstOn": 1,
+    "oemIoReturnNrc": "22",
+    "automaticReleaseConfirmed": false,
+    "manualSavedLockClearReportedWorking": true,
+    "note": "BDC status changes and diagnostic acknowledgements are not physical LED measurements. Manual lock reset did not fix the light effect."
+  }
 }
