@@ -100,7 +100,7 @@ assert.strictEqual(staleCluster.armPanel(), false, 'stale telemetry never enable
 staleCluster.close();
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluster-qr-test-'));
-const ctx = { dataDir: tempDir, spec: { version: '0.5.6' } };
+const ctx = { dataDir: tempDir, spec: { version: '0.5.8' } };
 const testReport = QR.report(ctx, cluster, 'auto', 'none');
 assert.ok(testReport.pages.length > 0);
 const payloads = testReport.pages.map((page, idx) => {
@@ -115,5 +115,22 @@ assert.ok(decoded.includes('CUSTOM CLUSTER DIAGNOSTICS'));
 assert.ok(decoded.includes('slot 0x203'));
 assert.ok(QR.matrix(testReport.pages[0]).getModuleCount() > 0);
 assert.strictEqual(testReport.storedAt.length > 0, true);
+const exportDir = path.join(tempDir, 'exports');
+const unrelated = path.join(exportDir, 'keep-other-app.log');
+fs.writeFileSync(unrelated, 'must survive');
+const lookalike = path.join(exportDir, 'cluster-diagnostics-custom.txt');
+fs.writeFileSync(lookalike, 'must survive');
+const targetOutside = path.join(tempDir, 'keep-original.txt');
+fs.writeFileSync(targetOutside, 'outside');
+const symlink = path.join(exportDir, 'cluster-diagnostics-2026-11-10T10-20-30-000Z.txt');
+fs.symlinkSync(targetOutside, symlink);
+const erased = QR.clearSaved(ctx);
+assert.strictEqual(erased.deleted, 1, 'only this app\'s dated local export is deleted');
+assert.strictEqual(erased.errors.length, 0);
+assert.ok(fs.existsSync(unrelated), 'other apps\' files remain');
+assert.ok(fs.existsSync(lookalike), 'a similar but non-app filename remains');
+assert.ok(fs.existsSync(targetOutside), 'external targets remain');
+assert.ok(fs.lstatSync(symlink).isSymbolicLink(), 'do not follow or delete symlinks');
+assert.strictEqual(QR.clearSaved(ctx).deleted, 0, 'repeated delete is safe');
 cluster.close();
 console.log('custom-cluster staged render and QR diagnostics tests passed');

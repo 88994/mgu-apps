@@ -14,6 +14,9 @@ qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
 
 const CHUNK = 280;
 const MEDIA_ROOTS = ['/media', '/run/media'];
+// These are the only files the app is allowed to delete. USB exports, system
+// journals and data from other apps are deliberately outside this scope.
+const LOCAL_EXPORT = /^cluster-diagnostics-\d{4}-\d{2}-\d{2}T[\d-]+Z\.txt$/;
 
 function snapshot(ctx, cluster, wazeStatus, phoneStatus, hmiEvents) {
     const data = [
@@ -68,6 +71,40 @@ function save(ctx, data) {
     return result;
 }
 
+/** Remove only this app's dated .txt exports inside its private data folder. */
+function clearSaved(ctx) {
+    const result = { deleted: 0, errors: [], usbPreserved: true };
+    if (!ctx || typeof ctx.dataDir !== 'string' || !path.isAbsolute(ctx.dataDir)) {
+        result.errors.push('App data directory unavailable');
+        return result;
+    }
+    const directory = path.join(ctx.dataDir, 'exports');
+    let entries;
+    try {
+        const st = fs.lstatSync(directory);
+        if (!st.isDirectory() || st.isSymbolicLink()) {
+            result.errors.push('Export directory is not a regular directory');
+            return result;
+        }
+        entries = fs.readdirSync(directory);
+    } catch (e) {
+        if (e.code !== 'ENOENT') result.errors.push('Cannot inspect exports: ' + e.code);
+        return result;
+    }
+    entries.forEach((name) => {
+        if (!LOCAL_EXPORT.test(name)) return;
+        const target = path.join(directory, name);
+        try {
+            // Never follow links, even if their names match a diagnostic file.
+            if (fs.lstatSync(target).isFile()) {
+                fs.unlinkSync(target);
+                result.deleted++;
+            }
+        } catch (e) { result.errors.push(name + ': ' + e.code); }
+    });
+    return result;
+}
+
 function report(ctx, cluster, wazeStatus, phoneStatus, hmiEvents) {
     const full = snapshot(ctx, cluster, wazeStatus, phoneStatus, hmiEvents);
     const packed = zlib.deflateSync(Buffer.from(full, 'utf8')).toString('base64');
@@ -100,4 +137,4 @@ function draw(cv, qr, x, y, maxSize) {
             top + (row + quiet) * pixel, pixel, pixel, '#000000');
 }
 
-module.exports = { report, matrix, draw, snapshot };
+module.exports = { report, matrix, draw, snapshot, clearSaved };

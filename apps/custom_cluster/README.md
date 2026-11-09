@@ -1,4 +1,15 @@
-# Custom Cluster 0.5.7 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.8 — BMW G21 / MGU iDrive 7
+
+## 0.5.8: Clear local diagnostic logs from QR view
+
+- Open **QR logs**; the second bottom-bar button becomes **Delete logs**.
+- A first press requests confirmation; press **Confirm delete** within eight
+  seconds to remove only Custom Cluster's dated diagnostic `.txt` exports from
+  the app's own `data/exports` folder. The current QR report and in-memory HMI
+  event history are cleared too.
+- Files from other apps, renderer/system journals, and copies already exported
+  to a USB drive are **not** deleted. A new QR report can be generated with
+  **Next QR page** after deletion, or by re-entering QR logs.
 
 ## 0.5.7: Diagnostics and QR use the main HMI page
 

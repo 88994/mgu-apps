@@ -22,7 +22,7 @@ for (const screen of spec.screens) {
 
 const clicks = new Map(), pages = [], loops = [], events = [];
 const labels = new Map(), renders = new Map(), drawn = [];
-let reportCount = 0;
+let reportCount = 0, cleared = 0;
 const ui = {
     onClick: (name, fn) => clicks.set(name, fn),
     onVisible: (fn) => events.push(fn),
@@ -68,7 +68,8 @@ const deps = {
     './sixwb_preview.js': { draw6WBPreview() {} },
     './cluster_colors.js': { resolveColor() { return []; }, resolve6WBColor() { return []; }, colorHex() { return ''; } },
     './kit/canvas': { withAlpha() { return ''; } },
-    './cluster_diagnostics.js': { report, matrix: (data) => data, draw() {} },
+    './cluster_diagnostics.js': { report, matrix: (data) => data, draw() {},
+        clearSaved() { cleared++; return { deleted: 2, errors: [], usbPreserved: true }; } },
 };
 vm.runInNewContext(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), {
     require: (name) => { assert.ok(deps[name], 'unexpected dependency ' + name); return deps[name]; },
@@ -104,6 +105,17 @@ async function test() {
     await clicks.get('BTN_DIAG_QR')();
     assert.strictEqual(labels.get('BTN_QR'), 'Next QR page');
     assert.strictEqual(reportCount, 3);
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Delete logs');
+    clicks.get('BTN_DIAG')();
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Confirm delete');
+    assert.strictEqual(cleared, 0, 'first press cannot erase logs');
+    clicks.get('BTN_DIAG')();
+    assert.strictEqual(cleared, 1, 'confirmed press clears local exports');
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Delete logs');
+    await renders.get('MAIN')();
+    assert.ok(drawn.some((x) => x.includes('Deleted 2 local log file')), 'clear result visible');
+    clicks.get('BTN_QR')();
+    assert.strictEqual(reportCount, 4, 'new QR report still works after deletion');
     assert.deepStrictEqual(pages, [], 'navigation must not call unreliable RHMI openState');
     assert.ok(events.length, 'HMI visibility should be logged');
     console.log('custom-cluster in-page HMI navigation and QR lifecycle tests passed');
