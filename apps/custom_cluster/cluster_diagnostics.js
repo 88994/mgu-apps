@@ -39,6 +39,9 @@ function snapshot(ctx, cluster, wazeStatus, phoneStatus, hmiEvents) {
         '',
         '=== RENDERER SLOT AND LAYER STATUS ===',
         cluster.rendererStatus() || '(no renderer status response yet)',
+        '',
+        '=== PANEL TEST EVENT HISTORY ===',
+        typeof cluster.history === 'function' ? cluster.history() : '(history unavailable)',
     ];
     return data.join('\n') + '\n';
 }

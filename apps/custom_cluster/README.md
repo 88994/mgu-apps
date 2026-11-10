@@ -1,4 +1,22 @@
-# Custom Cluster 0.5.8 — BMW G21 / MGU iDrive 7
+# Custom Cluster 0.5.9 — BMW G21 / MGU iDrive 7
+
+## 0.5.9: Single native page and trace of the parked panel test
+
+- The old Diagnostics and QR RHMI states are removed from the installed UI.
+  Their content remains available through the **Diagnostics** and **QR logs**
+  buttons on the one native **Custom Cluster** page. The previous duplicate
+  navigation tabs could select MAIN while the old in-page Diagnostics view
+  kept drawing. Selecting the app again after Home or Settings resets to its
+  design preview. **Back to cluster** returns within the same HMI page.
+- Each armed 12-second parked panel test now retains a capped, timestamped
+  history of renderer layer events, slot transitions, refusal reasons and
+  selected renderer status lines **while the test is running**. The QR export
+  includes this history even after the panel is automatically restored.
+  **Delete logs** also clears these in-memory event entries.
+- A panel slot shown as **idle** after a 12-second test is insufficient to
+  diagnose why the image failed to appear; its during-test events are needed.
+  Neither the full rendering behaviour nor replacement warning display is
+  verified on the real vehicle. The parked-only safety guard is unchanged.
 
 ## 0.5.8: Clear local diagnostic logs from QR view
 

@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Custom Cluster 0.5.8 - in-page diagnostics and staged, map-safe KOMBI probes.
+ * Custom Cluster 0.5.9 - one native screen, in-page diagnostics, panel event history.
  * Stock is the default. Real values only can reach cluster-render; emulator
  * and demo values stay exclusively on the centre-screen preview.
  */
@@ -55,8 +55,11 @@ mgu.run({
             updateButtons();
         }
         ui.onVisible((name, visible) => {
-            if (name === 'MAIN' || name === 'DIAGNOSTICS' || name === 'QR_REPORT')
-                uiEvent(name + (visible ? ' visible' : ' hidden'));
+            uiEvent(name + (visible ? ' visible' : ' hidden'));
+            // A fresh entry from the app tile, Home, or Settings must always
+            // show the preview. All secondary views now live inside MAIN;
+            // there are no hidden RHMI states that can steal focus.
+            if (name === 'MAIN' && visible) showPage('MAIN');
         });
 
         function syncSettings() {
@@ -86,8 +89,6 @@ mgu.run({
             cluster.pollStatus(true);
             return showPage('DIAGNOSTICS');
         });
-        ui.onClick('BTN_DIAG_REFRESH', () => { uiEvent('refresh diagnostics'); cluster.pollStatus(true); });
-        ui.onClick('BTN_DIAG_HOME', () => { uiEvent('diagnostics back to main'); return showPage('MAIN'); });
         // The QR view uses the same proven MAIN HMI state; a new report captures
         // the current renderer state, including any running test.
         function captureQr() {
@@ -126,6 +127,7 @@ mgu.run({
             qrPage = 0;
             qrError = '';
             uiEvents.length = 0;
+            cluster.clearHistory();
             qrNotice = 'Deleted ' + result.deleted + ' local log file(s).' +
                 (result.errors.length ? ' Errors: ' + result.errors.join('; ').slice(0, 85) : '') +
                 ' USB copies were kept.';
@@ -135,9 +137,6 @@ mgu.run({
         }
         const openQr = () => { uiEvent('show QR in main state'); captureQr(); return showPage('QR_REPORT'); };
         ui.onClick('BTN_QR', () => currentPage === 'QR_REPORT' ? nextQrPage() : openQr());
-        ui.onClick('BTN_DIAG_QR', openQr);
-        ui.onClick('BTN_QR_NEW', captureQr);
-        ui.onClick('BTN_QR_HOME', () => { uiEvent('QR back to main'); return showPage('MAIN'); });
         function nextQrPage() {
             uiEvent('QR next page');
             if (!qrReport || !qrReport.pages.length) return captureQr();
@@ -151,7 +150,6 @@ mgu.run({
                 log.warn('cluster QR page: ' + qrError);
             }
         }
-        ui.onClick('BTN_QR_NEXT', nextQrPage);
 
         // A stale Shortcut event is never displayed as proof that an app runs.
         const cleanup = setInterval(() => {
@@ -194,7 +192,6 @@ mgu.run({
             catch (e) { cv.text('QR image error: ' + String(e.message).slice(0, 58), 60, 459, 20, t.warn); }
             return ui.image(target, cv);
         }
-        ctx.loop('QR_REPORT', 2, () => renderQr('QR_REPORT_GFX'));
 
         function renderDiagnostics(target) {
             const t = ctx.theme();
@@ -225,7 +222,6 @@ mgu.run({
                 cv.text(line.slice(0, 205), 48, 345 + i * 15, 12, t.dim));
             return ui.image(target, cv);
         }
-        ctx.loop('DIAGNOSTICS', 2, () => renderDiagnostics('DIAGNOSTICS_GFX'));
 
         ctx.loop('MAIN', 2, () => {
             if (currentPage === 'DIAGNOSTICS') return renderDiagnostics('MAIN_GFX');

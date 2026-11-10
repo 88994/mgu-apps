@@ -58,11 +58,14 @@ assert.strictEqual(fake.effects[0].contend, true);
 fake.emit('layer', 1, 'shown', '');
 fake.emit('target', 'panel', 'mapped', 'custom_cluster', '');
 fake.emit('status', 'slot 0x203 status 3: content class 2 map 1');
+assert.ok(cluster.history().includes('during test: slot 0x203'),
+    'record renderer slot state while a panel test is active');
 assert.strictEqual(cluster.status().panelLayer, 'shown');
 assert.strictEqual(cluster.status().panelTargetState, 'mapped (custom_cluster)');
 assert.ok(cluster.rendererStatus().includes('0x203'));
 assert.strictEqual(cluster.armPanel(), false, 'press again stops');
 assert.deepStrictEqual(fake.drops, [1]);
+assert.ok(cluster.history().includes('test ended: Stopped by user'));
 
 cluster.settings(settings({ panelTestMode: 'design', panelTarget: 'panel201', layout: 'sixwb' }));
 assert.strictEqual(cluster.armPanel(), false, 'unsupported slot must not be requested');
@@ -100,7 +103,7 @@ assert.strictEqual(staleCluster.armPanel(), false, 'stale telemetry never enable
 staleCluster.close();
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cluster-qr-test-'));
-const ctx = { dataDir: tempDir, spec: { version: '0.5.8' } };
+const ctx = { dataDir: tempDir, spec: { version: '0.5.9' } };
 const testReport = QR.report(ctx, cluster, 'auto', 'none');
 assert.ok(testReport.pages.length > 0);
 const payloads = testReport.pages.map((page, idx) => {
@@ -113,6 +116,8 @@ const payloads = testReport.pages.map((page, idx) => {
 const decoded = zlib.inflateSync(Buffer.from(payloads.join(''), 'base64')).toString('utf8');
 assert.ok(decoded.includes('CUSTOM CLUSTER DIAGNOSTICS'));
 assert.ok(decoded.includes('slot 0x203'));
+assert.ok(decoded.includes('PANEL TEST EVENT HISTORY'));
+assert.ok(decoded.includes('test ended: Stopped by user'));
 assert.ok(QR.matrix(testReport.pages[0]).getModuleCount() > 0);
 assert.strictEqual(testReport.storedAt.length > 0, true);
 const exportDir = path.join(tempDir, 'exports');
@@ -132,5 +137,7 @@ assert.ok(fs.existsSync(lookalike), 'a similar but non-app filename remains');
 assert.ok(fs.existsSync(targetOutside), 'external targets remain');
 assert.ok(fs.lstatSync(symlink).isSymbolicLink(), 'do not follow or delete symlinks');
 assert.strictEqual(QR.clearSaved(ctx).deleted, 0, 'repeated delete is safe');
+cluster.clearHistory();
+assert.strictEqual(cluster.history(), '(no panel events yet)', 'clear removes in-memory history only');
 cluster.close();
 console.log('custom-cluster staged render and QR diagnostics tests passed');

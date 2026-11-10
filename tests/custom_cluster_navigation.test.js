@@ -1,6 +1,6 @@
 'use strict';
-// Firmware regression: opening secondary RHMI canvas states may fail on ID7.
-// Diagnostics and QR must render in the proven MAIN state, with a way back.
+// Regression: secondary RHMI states and an internal in-page router must not
+// both own navigation. Keep a single MAIN state and reset on fresh entry.
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -14,7 +14,7 @@ assert.strictEqual(icon.subarray(1, 4).toString('ascii'), 'PNG', 'Custom Cluster
 assert.strictEqual(icon.readUInt32BE(16), referenceIcon.readUInt32BE(16), 'BMW app icon width must match peer apps');
 assert.strictEqual(icon.readUInt32BE(20), referenceIcon.readUInt32BE(20), 'BMW app icon height must match peer apps');
 assert.strictEqual(icon.readUInt32BE(16), 140, 'ID7 installed-app tile should be 140px');
-assert.deepStrictEqual(spec.screens.map((s) => s.name), ['MAIN', 'DIAGNOSTICS', 'QR_REPORT']);
+assert.deepStrictEqual(spec.screens.map((s) => s.name), ['MAIN']);
 for (const screen of spec.screens) {
     const ids = screen.buttons.map((b) => b[0]);
     assert.strictEqual(ids.length, new Set(ids).size, screen.name + ' duplicate buttons');
@@ -22,7 +22,7 @@ for (const screen of spec.screens) {
 
 const clicks = new Map(), pages = [], loops = [], events = [];
 const labels = new Map(), renders = new Map(), drawn = [];
-let reportCount = 0, cleared = 0;
+let reportCount = 0, cleared = 0, clearedMemory = 0;
 const ui = {
     onClick: (name, fn) => clicks.set(name, fn),
     onVisible: (fn) => events.push(fn),
@@ -44,6 +44,7 @@ const ctx = {
 };
 const cluster = {
     settings() {}, sample() {}, observeVehicle() {}, apply() {}, pollStatus() {}, badge() {}, close() {},
+    clearHistory() { clearedMemory++; },
     armPanel() { return false; },
     rendererStatus() { return ''; },
     status() { return { disarmReason: 'Selector N - P required', testGuard: 'Selector N - P required',
@@ -76,7 +77,7 @@ vm.runInNewContext(fs.readFileSync(path.join(root, 'main.js'), 'utf8'), {
     process: { once() {} }, setInterval: () => 1, clearInterval() {},
     Date, Math, console,
 }, { filename: 'custom_cluster/main.js' });
-assert.deepStrictEqual(loops, ['QR_REPORT', 'DIAGNOSTICS', 'MAIN']);
+assert.deepStrictEqual(loops, ['MAIN']);
 for (const screen of spec.screens) for (const [id] of screen.buttons)
     if (id !== 'BTN_SETTINGS') assert.ok(clicks.has(id), 'button handler missing: ' + id);
 
@@ -98,24 +99,29 @@ async function test() {
     assert.ok(drawn.some((x) => x.includes('Page 2 / 2')), 'QR bar button cycles pages');
     clicks.get('BTN_QR')(); // wrap without closing the QR screen
     assert.strictEqual(reportCount, 1);
-    clicks.get('BTN_QR_NEW')();
-    assert.strictEqual(reportCount, 2);
     await clicks.get('BTN_TEST')(); // back to cluster on QR page
     assert.strictEqual(labels.get('BTN_TEST'), 'Parked panel test');
-    await clicks.get('BTN_DIAG_QR')();
+    await clicks.get('BTN_QR')();
     assert.strictEqual(labels.get('BTN_QR'), 'Next QR page');
-    assert.strictEqual(reportCount, 3);
+    assert.strictEqual(reportCount, 2);
     assert.strictEqual(labels.get('BTN_DIAG'), 'Delete logs');
     clicks.get('BTN_DIAG')();
     assert.strictEqual(labels.get('BTN_DIAG'), 'Confirm delete');
     assert.strictEqual(cleared, 0, 'first press cannot erase logs');
     clicks.get('BTN_DIAG')();
     assert.strictEqual(cleared, 1, 'confirmed press clears local exports');
+    assert.strictEqual(clearedMemory, 1, 'confirmed press clears in-memory panel history');
     assert.strictEqual(labels.get('BTN_DIAG'), 'Delete logs');
     await renders.get('MAIN')();
     assert.ok(drawn.some((x) => x.includes('Deleted 2 local log file')), 'clear result visible');
     clicks.get('BTN_QR')();
-    assert.strictEqual(reportCount, 4, 'new QR report still works after deletion');
+    assert.strictEqual(reportCount, 3, 'new QR report still works after deletion');
+    clicks.get('BTN_TEST')();
+    clicks.get('BTN_DIAG')();
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Back to cluster');
+    events[0]('MAIN', false);
+    events[0]('MAIN', true); // Home/Settings/app tile returns to MAIN
+    assert.strictEqual(labels.get('BTN_DIAG'), 'Diagnostics', 'fresh MAIN visibility must clear stale diagnostic view');
     assert.deepStrictEqual(pages, [], 'navigation must not call unreliable RHMI openState');
     assert.ok(events.length, 'HMI visibility should be logged');
     console.log('custom-cluster in-page HMI navigation and QR lifecycle tests passed');

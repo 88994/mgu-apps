@@ -46,6 +46,7 @@ class ClusterLayers {
         this.activeTestMode = '';
         this.lastSample = 0;
         this.data = {};
+        this.panelEvents = [];
         this.options = { layout: 'stock', accent: 'm', phoneBadge: false, wazeMap: 'auto',
             sixwbTheme: 'comfort', sixwbColorSource: 'original',
             colorMode: 'palette', colorBrightness: 100,
@@ -56,18 +57,21 @@ class ClusterLayers {
         this.disarmReason = 'Off by default';
         this.cr.on('ready', () => {
             this.ready = true;
+            this.tracePanel('renderer ready: ' + (this.cr.backend || 'unknown') + ', targets ' + (this.cr.targets || '-'));
             this.lastStatusRequestAt = 0;
             this.apply();
             this.pollStatus(true);
             this.log.info('cluster renderer connected backend=' + this.cr.backend + ' targets=' + this.cr.targets);
         });
         this.cr.on('disconnected', () => {
+            this.tracePanel('renderer disconnected');
             this.ready = false;
             this.layerState = 'disconnected';
             this.panelLayerState = 'disconnected';
         });
         this.cr.on('layer', (ref, state, reason) => {
             if (ref === this.panelRef) {
+                this.tracePanel('panel layer ' + state + (reason ? ': ' + reason : ''));
                 this.panelLayerState = state;
                 this.panelLayerReason = reason || '';
                 this.log.info('panel layer ' + state + (reason ? ': ' + reason : ''));
@@ -79,6 +83,8 @@ class ClusterLayers {
         this.cr.on('target', (target, state, holder, reason) => {
             if (target === 'map') this.targetState = target + ': ' + state;
             if (target === this.activePanelTarget) {
+                this.tracePanel('target ' + target + ': ' + state + (holder ? ' (' + holder + ')' : '') +
+                    (reason ? ' - ' + reason : ''));
                 this.panelTargetState = state + (holder ? ' (' + holder + ')' : '');
                 this.panelTargetReason = reason || '';
                 this.log.info('panel target ' + target + ': ' + this.panelTargetState +
@@ -88,13 +94,28 @@ class ClusterLayers {
         this.cr.on('status', (value) => {
             this.rendererStatusText = String(value || '').slice(0, 24000);
             this.rendererStatusAt = Date.now();
+            if (this.armedUntil) {
+                // Preserve the renderer's *during-test* state; a QR export
+                // made after 12 seconds otherwise sees only the idle slot.
+                const lines = this.rendererStatusText.split('\n')
+                    .filter((line) => /^(target panel|slot 0x203|renderer:)/i.test(line)).slice(0, 3);
+                if (lines.length) this.tracePanel('during test: ' + lines.join(' | '));
+            }
         });
         this.cr.on('refused', (op, ref, reason) => {
+            this.tracePanel('renderer refused ' + op + ' ref=' + ref + ': ' + reason);
             this.lastRefusal = op + ' ref=' + ref + ': ' + reason;
             this.log.warn('cluster ' + this.lastRefusal);
         });
         this.cr.connect();
     }
+
+    tracePanel(event) {
+        this.panelEvents.push(new Date().toISOString() + ' ' + String(event).replace(/\s+/g, ' ').slice(0, 600));
+        if (this.panelEvents.length > 80) this.panelEvents.shift();
+    }
+    history() { return this.panelEvents.join('\n') || '(no panel events yet)'; }
+    clearHistory() { this.panelEvents.length = 0; }
 
     settings(options) {
         const previous = this.options;
@@ -147,13 +168,16 @@ class ClusterLayers {
     armPanel() {
         if (this.armedUntil) { this.disarm('Stopped by user'); this.apply(); return false; }
         if (this.options.layout !== 'g80' && this.options.layout !== 'oem' && this.options.layout !== 'sixwb') {
-            this.disarmReason = 'Choose a full-panel design first'; return false;
+            this.disarmReason = 'Choose a full-panel design first';
+            this.tracePanel('test refused: ' + this.disarmReason);
+            return false;
         }
-        if (!this.parked()) { this.disarmReason = this.testGuard(); return false; }
-        if (!this.ready) { this.disarmReason = 'Renderer not connected'; return false; }
+        if (!this.parked()) { this.disarmReason = this.testGuard(); this.tracePanel('test refused: ' + this.disarmReason); return false; }
+        if (!this.ready) { this.disarmReason = 'Renderer not connected'; this.tracePanel('test refused: ' + this.disarmReason); return false; }
         const target = this.panelTarget();
         if (target !== 'panel' && !String(this.cr.targets || '').split(',').some((t) => t.trim().indexOf(target + ':') === 0)) {
             this.disarmReason = target + ' not advertised by installed renderer';
+            this.tracePanel('test refused: ' + this.disarmReason);
             return false;
         }
         this.activePanelTarget = target;
@@ -165,12 +189,15 @@ class ClusterLayers {
         this.lastRefusal = '';
         this.rendererStatusText = '';
         this.armedUntil = Date.now() + PANEL_TEST_MS;
+        this.tracePanel('test armed: ' + this.options.layout + '/' + this.activeTestMode +
+            ' target=' + target + ' speed=' + this.data.speed + ' rpm=' + this.data.rpm);
         this.disarmReason = this.activeTestMode + ' test: 12 seconds maximum';
         this.apply();
         this.pollStatus(true);
         return true;
     }
     disarm(reason) {
+        if (this.armedUntil || this.panelRef) this.tracePanel('test ended: ' + (reason || 'unknown'));
         this.armedUntil = 0;
         if (reason) this.disarmReason = reason;
         if (this.panelRef) { this.cr.drop(this.panelRef); this.panelRef = 0; }
@@ -192,6 +219,7 @@ class ClusterLayers {
                 fs: probe ? probeShader : mode === 6 ? sixwbShader : g80Shader });
             this.lastSent = 0;
             if (!this.panelRef) {
+                this.tracePanel('renderer refused panel layer creation');
                 this.disarmReason = 'Renderer refused panel layer creation';
                 this.armedUntil = 0;
                 this.panelLayerState = 'creation failed';
