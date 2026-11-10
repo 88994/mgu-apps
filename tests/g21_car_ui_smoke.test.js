@@ -18,9 +18,10 @@ assert(!spec('dpf_monitor').settings.some(s => s.key === 'dde_live' || s.key ===
     'DPF must always read real data and hide both test settings');
 assert(!dpf.includes("settings.get('demo')"), 'DPF must never show synthetic readings');
 assert.deepStrictEqual([...ambient.matchAll(/const TABS = \[([^\]]+)\]/g)].map(m => m[1]),
-    ["'Color', 'Diagnostics'"], 'only one native Settings tab in Ambient');
+    ["'Color', 'Zones', 'Favorites', 'Drive modes', 'Diagnostics'"],
+    'Ambient has dedicated zones, favorites, drive-mode and diagnostic pages');
 assert.deepStrictEqual([...wheel.matchAll(/const TABS = \[([^\]]+)\]/g)].map(m => m[1]),
-    ["'Comfort', 'Diagnostics'"], 'only one native Settings tab in WheelHeat');
+    ["'Comfort', 'Diagnostics', 'Log', 'QR Log'"], 'WheelHeat includes live diagnostics and export logs');
 assert.match(ambient, /ctx\.onTouch\(\(phase, x, y\)/, 'Ambient continuous sliders');
 assert.match(ambient, /phase === 2/, 'Ambient slider must accept move events');
 assert.match(ambient, /actionNotice = ctl\.info/, 'Ambient displays apply result');
@@ -39,7 +40,8 @@ assert.match(wheel, /ctl\.motionKnown/, 'fresh speed guard present for in-motion
 assert.match(wheel, /ctl\.readbacks\[did\]/, 'BDC diagnostics must use actual ECU readbacks');
 assert(!dpf.includes('Request (raw DID 44BB)'), 'unknown request not mislabelled as status');
 assert(!dpf.includes('cv.roundRect(70, 451, 1450, 6'), 'fake DPF progress bar removed');
-assert.match(dpf, /\['Live', 'History'\]/, 'saved real measurement history replaces redundant page');
+assert.match(dpf, /\['Overview', 'Details', 'History', 'Regeneration'\]/,
+    'DPF keeps live overview, measurements and stored history on separate pages');
 assert(!dpf.includes('No verified activity flag'), 'unverified regeneration badge removed');
 assert.match(ambient, /text\(cv, 'APPLY'/, 'stable Apply button must be visible');
 assert.match(ambient, /setMany\(change\)/, 'slider changes must batch persistence');

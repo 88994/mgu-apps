@@ -1,8 +1,8 @@
 {
   "id": "g21_ambient",
   "title": "G21 Ambient Lighting",
-  "description": "RGB picker, temporary LIN test and offline BDC menu-position-11 RGB request (isolated palette mapping unverified; no coding)",
-  "version": "0.3.12",
+  "description": "Ambient RGB, discoverable BDC LIN zones, six saved profiles and drive-mode colour plans; guarded temporary output and offline menu-11 plan",
+  "version": "0.4.0",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB1",
   "iconGlyph": "RGB",
@@ -18,6 +18,10 @@
     },
     "de.bmw.infotainment.vehicle.Vehicle2": {
       "statusCarSpeed2": "rs"
+    },
+    "de.bmw.infotainment.drivingexcitement.FES": {
+      "_optional": "Read the driving mode to preview saved RGB profiles; no automatic ECU writes",
+      "statusFESVehicleDynamicSwitchHMI": "rs"
     }
   },
   "screens": [
@@ -81,6 +85,42 @@
         [
           "BTN_SETTINGS",
           "All settings"
+        ],
+        [
+          "BTN_BDC_SCAN",
+          "Scan BDC LIN modules"
+        ],
+        [
+          "BTN_ZONE_NEXT",
+          "Next discovered zone"
+        ],
+        [
+          "BTN_ZONE_POLICY",
+          "Zone follows main / own / car"
+        ],
+        [
+          "BTN_FAV_NEXT",
+          "Next favorite"
+        ],
+        [
+          "BTN_FAV_SAVE",
+          "Save favorite"
+        ],
+        [
+          "BTN_FAV_LOAD",
+          "Load favorite"
+        ],
+        [
+          "BTN_MODE_NEXT",
+          "Next driving mode"
+        ],
+        [
+          "BTN_MODE_SAVE",
+          "Save driving-mode colour"
+        ],
+        [
+          "BTN_BDC_RESET",
+          "Return detected BDC lights to BMW control"
         ]
       ]
     }
@@ -278,7 +318,11 @@
       "options": [
         [
           "temporary",
-          "Temporary LIN test"
+          "RAM01 temporary test"
+        ],
+        [
+          "bdc",
+          "BDC LIN discovered zones (temporary)"
         ],
         [
           "slot11",
