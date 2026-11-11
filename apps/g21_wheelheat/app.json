@@ -1,8 +1,8 @@
 {
   "id": "g21_wheelheat",
   "title": "G21 Heating Comfort",
-  "description": "Ignition-aware cold-weather heating with manual stop, durable parking lockout and launch logs",
-  "version": "0.4.16",
+  "description": "Ignition-aware heating with manual stop, BDC-busy seat retry and session-scoped QR and scrollable console",
+  "version": "0.4.17",
   "mguAppStartType": "autostart",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB2",
@@ -49,6 +49,22 @@
         [
           "BTN_STOP",
           "STOP automatic heating"
+        ],
+        [
+          "BTN_LOG_UP",
+          "Console: older events"
+        ],
+        [
+          "BTN_LOG_DOWN",
+          "Console: newer events"
+        ],
+        [
+          "BTN_LOG_LATEST",
+          "Console: latest event"
+        ],
+        [
+          "BTN_QR_REFRESH",
+          "Refresh session QR snapshot"
         ]
       ]
     }

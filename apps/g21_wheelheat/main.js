@@ -9,6 +9,7 @@ const { ComfortAuto } = require('./comfort_auto');
 const { SafeDiag, bytes } = require('./safe_diag');
 const QR = require('./qr_log');
 const Cycle = require('./cycle_policy');
+const { seatOnWithBusyRetry } = require('./seat_retry');
 
 // Settings is automatically provided as ONE native tab by the renderer.
 const TABS = ['Comfort', 'Diagnostics', 'Log', 'QR Log'];
@@ -22,7 +23,7 @@ mgu.run({
         const ctl = new SafeDiag(ctx, B.ECU, B.DID_HEAT);
         const auto = new ComfortAuto();
         const appStartedAt = Date.now();
-        const startReason = String(ctx.app.startReason || 'UNKNOWN');
+        const startReason = String(ctx.app && ctx.app.startReason || 'UNKNOWN');
         const offMinutes = () => Cycle.minutes(ctx.settings.get('minVehicleOffMins'));
         // The one-shot test bypasses ONLY the parked-time requirement. A real
         // ignition-ON signal, temperature and ECU guards are still required.
@@ -57,25 +58,39 @@ mgu.run({
         const statusSamples = Object.create(null);
         let lastAction = 'No heating command has been sent.';
         const eventFile = path.join(ctx.dataDir, 'heating_events.json');
-        let events = [];
-        try {
-            const old = JSON.parse(fs.readFileSync(eventFile, 'utf8'));
-            if (Array.isArray(old)) events = old.filter(e =>
-                e && Number.isFinite(e.at) && typeof e.message === 'string').slice(0, 60);
-        } catch (_) { /* first launch / storage unavailable */ }
+        // Start a fresh log even when the MGU has retained yesterday's app data.
+        // A verified ignition OFF also begins a new log session.
+        let sessionStartedAt = appStartedAt, sessionReason = 'MGU PROCESS START';
+        let events = [], sawVehicleOn = false;
+        let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
+        let consoleOffset = 0, consoleTouchY = null;
+        let warningCache = [], warningCacheAt = 0;
         let eventWriteError = '';
         const record = (kind, message) => {
             const at = Date.now();
             if (events[0] && events[0].kind === kind &&
                 events[0].message === message && at - events[0].at < 15000) return;
-            events.unshift({ at, kind, message: String(message).slice(0, 150) });
-            events = events.slice(0, 60);
+            events.unshift({ at, kind, message: String(message).slice(0, 320) });
+            events = events.slice(0, 350);
             try {
                 // Event log uses the same app-private data dir; no directory creation.
                 fs.writeFileSync(eventFile, JSON.stringify(events), 'utf8');
                 eventWriteError = '';
             } catch (e) { eventWriteError = String(e.message || e); }
             ctx.log.info('[HEAT EVENT] ' + kind + ' ' + message);
+        };
+        const resetSession = reason => {
+            sessionStartedAt = Date.now();
+            sessionReason = reason;
+            events = [];
+            qrReport = null;
+            qrMatrix = null;
+            qrPage = 0;
+            qrError = '';
+            consoleOffset = 0;
+            warningCache = [];
+            warningCacheAt = 0;
+            record('SESSION START', reason + '; previous QR pages discarded');
         };
         function persistCycle() {
             const state = cycle.snapshot();
@@ -122,7 +137,7 @@ mgu.run({
                     ' opens=' + uiOpenCount + ' autoAlreadyFired=' + auto.fired);
             });
         }
-        if (typeof ctx.app.on === 'function')
+        if (ctx.app && typeof ctx.app.on === 'function')
             ctx.app.on('entryPointExecute', (uuid, reason, name) => {
                 record('UI ENTRY', 'name=' + String(name) + ' reason=' + String(reason) +
                     ' processAge=' + Math.round((Date.now() - appStartedAt) / 1000) + 's');
@@ -130,14 +145,13 @@ mgu.run({
         if (ctx.ui.isVisible('MAIN') || ctx.ui.isVisible('SETTINGS'))
             record('UI ALREADY VISIBLE', 'when app logic initialized; reason=' + startReason);
         let lastPlannerStatus = '';
-        let qrReport = null, qrPage = 0, qrMatrix = null, qrError = '';
 
         function buildQrReport() {
             try {
                 const now = Date.now();
                 const marker = Number(ctx.settings.get('_autoCycleAt'));
                 qrReport = QR.createReport(ctx, {
-                    events, eventWriteError,
+                    events, eventWriteError, sessionStartedAt, sessionReason,
                     state: {
                         appStartedAt: new Date(appStartedAt).toISOString(),
                         processStartReason: startReason, firstUiAt: firstUiAt ?
@@ -256,10 +270,18 @@ mgu.run({
                     pendingStops.clear();
                     stopAttempts.clear();
                     acknowledged.clear();
+                    // Only a real ON -> OFF cycle resets the QR log. An
+                    // initial OFF observation at process boot is not a new
+                    // journey; retain the PROCESS START evidence in that case.
+                    if (observed.transition === 'off' && sawVehicleOn) {
+                        resetSession('VERIFIED VEHICLE OFF');
+                        sawVehicleOn = false;
+                    }
                     record(observed.transition === 'off' ? 'VEHICLE OFF' : 'VEHICLE ENDING', observed.reason +
                         '; stopped app timers=' + discarded.join(', ') +
                         '; no ECU write during shutdown');
                 } else if (observed.transition === 'on') {
+                    sawVehicleOn = true;
                     if (cycle.canStart()) auto.rearm();
                     record('VEHICLE ON', observed.reason +
                         '; app started via ' + startReason +
@@ -349,11 +371,26 @@ mgu.run({
                 record('BLOCK', lastAction);
                 return false;
             }
-            const ok = await ctl.autoWrite(data, intent.device + ' ' + intent.type);
-            lastAction = (ok ? 'BDC ACK' : 'NOT CONFIRMED') + ': ' + intent.device + ' ' +
-                intent.type + ' (2E ' + bytes(data) + ')';
-            ctx.log.info('[AUTO LIVE] ' + lastAction);
-            record(ok ? 'ECU ACK' : 'ECU REJECT', lastAction + ' [' + ctl.info + ']');
+            const stillAllowed = () => permitted() && ctl.online && ctl.motionKnown &&
+                cycle.mode === 'on' && (intent.type === 'OFF' ||
+                    (generation === cancelGeneration && cycle.mayContinue()));
+            const attemptWrite = async attempt => {
+                if (!stillAllowed()) return { ok: false, nrc: null, blocked: true };
+                if (!ctl.verified) await ctl.read(B.DID_HEAT);
+                if (!stillAllowed() || !ctl.verified)
+                    return { ok: false, nrc: null, blocked: true };
+                const accepted = await ctl.autoWrite(data, intent.device + ' ' + intent.type);
+                lastAction = (accepted ? 'BDC ACK' : 'NOT CONFIRMED') + ': ' + intent.device + ' ' +
+                    intent.type + ' (2E ' + bytes(data) + ') attempt=' + attempt;
+                ctx.log.info('[AUTO LIVE] ' + lastAction);
+                record(accepted ? 'ECU ACK' : 'ECU REJECT', lastAction + ' [' + ctl.info + ']');
+                return { ok: accepted, nrc: ctl.lastNrc };
+            };
+            const result = await seatOnWithBusyRetry({
+                device: intent.device, type: intent.type, send: attemptWrite,
+                allowed: stillAllowed, wait, event: record,
+            });
+            const ok = result.ok;
             if (ok && (intent.type === 'ON' || intent.type === 'EXTEND')) acknowledged.add(intent.device);
             if (ok && intent.type === 'OFF') acknowledged.delete(intent.device);
             // A UI cancellation can occur while a UDS write is awaiting its
@@ -374,6 +411,31 @@ mgu.run({
                     '; no repeat until next ignition after ' + offMinutes() +
                     'm vehicle OFF; physical heating still unverified';
                 record('CYCLE', cycleReason);
+            }
+            // A positive 0x2E ACK does not prove that physical heating began.
+            // Read the independent seat status DID after the accepted request
+            // so silent non-activation is visible in the session console.
+            if (ok && intent.type === 'ON' &&
+                (intent.device === 'Driver seat' || intent.device === 'Passenger seat') &&
+                cycle.mode === 'on' && ctl.online) {
+                const readbackSession = sessionStartedAt;
+                await wait(900);
+                if (cycle.mode === 'on' && ctl.online && sessionStartedAt === readbackSession) {
+                    const did = intent.device === 'Driver seat' ?
+                        B.DID_SEAT_DRIVER : B.DID_SEAT_PASSENGER;
+                    const readOk = await ctl.read(did);
+                    const feedback = ctl.readbacks[did];
+                    const decoded = readOk && feedback ? B.decodeSeatReadback(feedback.payload) : null;
+                    const detail = readOk && feedback ? feedback.raw :
+                        (feedback && feedback.error || ctl.info);
+                    const state = decoded ? 'reportedOn=' + decoded.on +
+                        ' level=' + decoded.level + ' reduced=' + decoded.consumptionReduced +
+                        ' emergency=' + decoded.emergency + ' timedOut=' + decoded.timedOut :
+                        'state not decoded';
+                    if (sessionStartedAt === readbackSession)
+                        record('SEAT READBACK', intent.device + ' DID 0x' + did.toString(16).toUpperCase() +
+                            ': ' + state + ' | ' + detail);
+                }
             }
             return ok;
         }
@@ -494,6 +556,33 @@ mgu.run({
             else if (tab === 3) nextQrPage();
         });
         ctx.ui.onClick('BTN_STOP', stopAutoHeating);
+        let consoleTotal = 0;
+        const consoleMove = delta => {
+            consoleOffset = Math.max(0, Math.min(Math.max(0, consoleTotal - 13),
+                consoleOffset + delta));
+        };
+        ctx.ui.onClick('BTN_LOG_UP', () => { if (tab === 2) consoleMove(12); });
+        ctx.ui.onClick('BTN_LOG_DOWN', () => { if (tab === 2) consoleMove(-12); });
+        ctx.ui.onClick('BTN_LOG_LATEST', () => { if (tab === 2) consoleOffset = 0; });
+        ctx.ui.onClick('BTN_QR_REFRESH', () => { if (tab === 3) buildQrReport(); });
+        if (typeof ctx.onTap === 'function') ctx.onTap((x, y) => {
+            if (tab === 2 && y >= 121 && y <= 169) {
+                if (x >= 906 && x < 1092) consoleMove(12);
+                else if (x >= 1102 && x < 1288) consoleMove(-12);
+                else if (x >= 1298 && x < 1537) consoleOffset = 0;
+            } else if (tab === 3 && x >= 1275 && x < 1515 && y >= 112 && y <= 165)
+                buildQrReport();
+        });
+        if (typeof ctx.onTouch === 'function') ctx.onTouch((phase, x, y) => {
+            if (tab !== 2) { consoleTouchY = null; return; }
+            if (phase === 1 && x >= 45 && x <= 1540 && y >= 180 && y <= 475)
+                consoleTouchY = y;
+            else if (phase === 3 && consoleTouchY !== null) {
+                const dy = y - consoleTouchY;
+                if (Math.abs(dy) > 18) consoleMove(Math.round(dy / 22));
+                consoleTouchY = null;
+            }
+        });
         if (typeof ctx.onTab === 'function') ctx.onTab(setTab);
         ctl.init().catch(e => { ctl.info = 'TASU unavailable: ' + e; });
 
@@ -582,51 +671,52 @@ mgu.run({
                     '   |   start threshold ' + c.belowTemp + ' °C',
                 54, 486, 20, t.dim);
             } else if (tab === 2) {
-                G.panel(cv, t, 24, 62, 1552, 445, 'Automatic heating / diagnostic log');
-                let diskStatus = 'NOT FOUND';
-                try {
-                    const disk = JSON.parse(fs.readFileSync(ctx.settings.file, 'utf8'));
-                    diskStatus = 'READ OK | Auto ' + String(disk.autoEnabled) +
-                        ' | Limit ' + String(disk.belowTemp) + ' C' +
-                        ' | Min vehicle OFF ' + String(disk.minVehicleOffMins === undefined ?
-                            30 : disk.minVehicleOffMins) + 'm';
-                } catch (e) {
-                    diskStatus = e && e.code === 'ENOENT' ? 'NO FILE YET (change a setting)' :
-                        'NOT READABLE: ' + String(e.code || e.message || e);
+                G.panel(cv, t, 24, 62, 1552, 445, 'Live console / this vehicle session');
+                if (now - warningCacheAt > 2500) {
+                    warningCacheAt = now;
+                    warningCache = QR.sessionWarnings(ctx, sessionStartedAt, 150);
                 }
-                text(cv, 'Saved settings: ' + diskStatus.slice(0, 105),
-                    52, 126, 22, diskStatus.startsWith('READ OK') ? t.accent : t.warn);
-                text(cv, 'Storage: ' + (ctx.settings.saveError || eventWriteError || 'no error reported').slice(0, 112),
-                    52, 160, 19, (ctx.settings.saveError || eventWriteError) ? t.warn : t.dim);
-                text(cv, 'Data: ' + String(ctx.dataDir).slice(0, 120) +
-                    '  | Loaded: ' + String(ctx.settings.loadSource).slice(-48),
-                    52, 190, 17, t.dim);
-                text(cv, 'FS: ' + String(ctx.storageInfo).slice(0, 138), 52, 216, 15, t.dim);
-                events.slice(0, 7).forEach((entry, i) => {
-                    const y = 245 + 35 * i;
-                    text(cv, new Date(entry.at).toTimeString().slice(0, 8), 54, y, 21, t.dim);
-                    text(cv, entry.kind, 180, y, 21,
-                        /REJECT|ERROR|BLOCK/.test(entry.kind) ? t.warn : t.accent);
-                    text(cv, entry.message.slice(0, 112), 365, y, 21, t.text);
-                });
-                if (!events.length) text(cv, 'No events yet', 52, 264, 24, t.dim);
+                const lines = QR.consoleLines(events, warningCache, sessionStartedAt);
+                consoleTotal = lines.length;
+                consoleOffset = Math.min(consoleOffset, Math.max(0, consoleTotal - 13));
+                const start = Math.max(0, lines.length - 13 - consoleOffset);
+                const controls = (x, w, label) => {
+                    cv.fillRect(x, 125, w, 40, '#284354');
+                    text(cv, label, x + 18, 152, 21, t.text);
+                };
+                text(cv, 'SESSION ' + new Date(sessionStartedAt).toISOString().slice(11, 19) +
+                    ' UTC  |  ' + sessionReason, 53, 152, 19, t.dim);
+                controls(906, 186, 'OLDER');
+                controls(1102, 186, 'NEWER');
+                controls(1298, 239, 'LATEST');
+                cv.fillRect(49, 174, 1491, 301, '#101823');
+                for (let i = 0; i < 13; i++) {
+                    const entry = lines[start + i];
+                    if (!entry) break;
+                    text(cv, entry.text, 62, 197 + i * 22, 18,
+                        entry.error ? t.warn : /ECU ACK|VEHICLE ON|SESSION START/.test(entry.text) ?
+                            t.accent : t.text, { font: 'num' });
+                }
+                text(cv, 'SWIPE UP/DOWN or use OLDER/NEWER | ' + lines.length +
+                    ' lines | ' + (start + 1) + '-' + Math.min(start + 13, lines.length),
+                56, 495, 17, t.dim);
             } else {
                 G.panel(cv, t, 24, 62, 540, 445, 'QR diagnostic export');
-                G.panel(cv, t, 584, 62, 992, 445, 'Full retained diagnostic log');
+                G.panel(cv, t, 584, 62, 992, 445, 'Compact current-session snapshot');
+                cv.fillRect(1275, 125, 240, 39, '#284354');
+                text(cv, 'REFRESH QR', 1295, 152, 21, t.text);
                 if (qrMatrix && qrReport) {
                     QR.draw(cv, qrMatrix, 91, 107, 390);
-                    text(cv, 'REPORT ' + qrReport.id, 620, 145, 27, t.accent, { font: 'bold' });
+                    text(cv, 'REPORT ' + qrReport.id, 620, 197, 26, t.accent, { font: 'bold' });
                     text(cv, 'QR ' + (qrPage + 1) + ' / ' + qrReport.pages.length,
-                        620, 205, 39, t.text, { font: 'bold' });
-                    text(cv, 'ACTION: next QR page', 620, 263, 27, t.text);
-                    text(cv, 'Switch away and back to refresh the snapshot.', 620, 310, 22, t.dim);
-                    text(cv, 'Includes: settings, cycle reason, sensor data,',
-                        620, 369, 22, t.text);
-                    text(cv, 'BDC raw replies, all saved events and available', 620, 401, 22, t.text);
-                    text(cv, 'rotated app logs (' + Math.ceil(qrReport.totalBytes / 1024) +
-                        ' KiB total).', 620, 433, 22, t.text);
-                    text(cv, 'Scan EVERY numbered QR to reconstruct the full report.',
-                        620, 477, 20, t.warn);
+                        620, 249, 39, t.text, { font: 'bold' });
+                    text(cv, 'ACTION: next QR page', 620, 296, 27, t.text);
+                    text(cv, 'Only this ignition/HU session (' +
+                        Math.ceil(qrReport.totalBytes / 1024) + ' KiB).', 620, 352, 23, t.text);
+                    text(cv, 'Contains latest ECU replies, errors, current', 620, 391, 22, t.text);
+                    text(cv, 'settings and startup / ignition events.', 620, 424, 22, t.text);
+                    text(cv, 'Scan all pages; older sessions are automatically excluded.',
+                        620, 477, 19, t.warn);
                 } else {
                     text(cv, 'QR export unavailable: ' + (qrError || 'no report').slice(0, 110),
                         620, 190, 25, t.warn);

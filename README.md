@@ -6,7 +6,7 @@ Eleven source-installable MGU Store apps for an ID7 G21. Source: `NamelsMissing/
 | --- | --- | --- |
 | `dpf_monitor` | 0.2.8 | Overview, DPF details, real regeneration odometer history and diagnostics; no simulated data |
 | `g21_ambient` | 0.4.0 | RGB picker, live BDC LIN module discovery, per-zone settings, six saved looks, drive-mode previews and guarded manual apply |
-| `g21_wheelheat` | 0.4.15 | Background autostart, configurable heating repeat cooldown, persistent settings and offline full-diagnostic QR export |
+| `g21_wheelheat` | 0.4.17 | Ignition-cycle-gated autostart, manual stop, BDC busy retries for seat ON, seat readback, session-only compact QR diagnostics and scrollable live console |
 | `mgu_gamestation` | 0.2.0 (experimental) | NES, SNES, Game Boy/Color, Pong; iDrive singleplayer, phone singleplayer, two-phone multiplayer or hybrid; local ROM upload. Games blocked without a fresh 0 km/h vehicle speed. Sound/real MGU compatibility unverified. |
 | `mgu_gamesnacks` | 0.1.1 (preview) | Offline HTML5 game catalog and touch diagnostic preview; original game distribution and browser compatibility still under review. |
 | `mgu_video_hub` | 0.1.1 (experimental) | Local video library from app storage/USB, QR phone import, YouTube links, 15 fps I420 GPU video playback using external ffmpeg, optional yt-dlp and experimental ALSA audio. Parked only. |
