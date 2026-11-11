@@ -54,7 +54,7 @@ class Storage {
     update(fn) { const next = JSON.parse(JSON.stringify(this.state)); fn(next); this.save(next); }
     export(data) {
         const file = path.join(path.dirname(this.file), 'equalizer-diagnostics.json');
-        fs.writeFileSync(file + '.tmp', JSON.stringify(Object.assign({ app: 'equalizer', version: '0.2.0', created: new Date().toISOString() }, data), null, 2), { mode: 0o600 });
+        fs.writeFileSync(file + '.tmp', JSON.stringify(Object.assign({ app: 'equalizer', version: '0.2.1', created: new Date().toISOString() }, data), null, 2), { mode: 0o600 });
         fs.renameSync(file + '.tmp', file); return file;
     }
 }

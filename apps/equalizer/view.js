@@ -119,7 +119,7 @@ function draw(r, t, s, a) {
         text('VERBINDUNG & WERTE', 73, 136, 23, DIM, { spacing: 1 });
         [['DSP-Dienst', s.dspOnline ? 'Verbunden · ' + (s.dspStatus.streams || []).length + ' PCM-Quellen' : 'Nicht verbunden'],
          ['PCM-Frames gesamt', s.dspStatus ? s.dspStatus.frames : '--'], ['BMW-Klangwerte', shot.points.length],
-         ['CarPlay / Radio', 'Noch nicht an DSP angebunden'], ['Version', '0.2.0 · Fahrzeugtest ausstehend']].forEach((v, i) => {
+         ['CarPlay / Radio', 'Noch nicht an DSP angebunden'], ['Version', '0.2.1 · Fahrzeugtest ausstehend']].forEach((v, i) => {
             text(v[0], 73, 187 + i * 42, 23, DIM); text(v[1], 774, 187 + i * 42, 22, WHITE, { align: 'right' });
         });
         text('LETZTE MELDUNGEN', 856, 136, 23, DIM, { spacing: 1 });

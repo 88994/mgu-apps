@@ -4,7 +4,8 @@ const COMMAND = 'org.genivi.am.commandinterface.CommandControl';
 const CAREQ = 'de.bmw.infotainment.am.carequalizing.CarSpecificEqualizingData';
 
 function checked(reply) {
-    if (!reply || (reply.amError !== 0 && reply.amError !== 6)) throw new Error('Audio-Manager: ' + (reply && reply.amError !== undefined ? 'Fehler ' + reply.amError : 'keine gültige Antwort'));
+    // Native signal wrappers may expose the success enum as numeric 0 or textual E_OK.
+    if (!reply || (reply.amError !== 0 && reply.amError !== 6 && reply.amError !== 'E_OK')) throw new Error('Audio-Manager: ' + (reply && reply.amError !== undefined ? 'Fehler ' + reply.amError : 'keine gültige Antwort'));
     return reply;
 }
 function array(reply, key) {

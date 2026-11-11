@@ -35,6 +35,17 @@ async function main() {
         await press('BTN_REFRESH'); assert.equal(p.state.writes.length, 0);
         await press('BTN_PAGE'); await press('BTN_PAGE'); await press('BTN_PAGE');
         await press('BTN_APPLY'); assert.equal(state().learning.control, 'bass');
+        // Regression: an unfinished OEM bass measurement must NOT disable software DSP.
+        await press('BTN_PAGE'); await press('BTN_PAGE'); // setup -> diagnostics -> DSP
+        await press('BTN_INC');
+        assert.equal(dsp.config.bands[0].gainDb, 0, 'DSP changes remain staged');
+        await press('BTN_APPLY');
+        assert.equal(dsp.config.bands[0].gainDb, 0.5, 'DSP apply works during OEM learning');
+        assert.equal(state().learning.control, 'bass', 'OEM learning must remain intact');
+        await press('BTN_DEC'); await press('BTN_APPLY');
+        assert.equal(dsp.config.bands[0].gainDb, 0, 'reset DSP gain before other tests');
+        for (let i = 0; i < 3; i++) await press('BTN_PAGE'); // DSP -> tone -> profiles -> setup
+        assert.equal(state().learning.shots.length, 0);
         await shot('setup-center');
         await press('BTN_APPLY'); assert.equal(state().learning.shots.length, 1);
         p.state.system[30] = -12; await press('BTN_APPLY');

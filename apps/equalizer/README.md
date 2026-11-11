@@ -1,4 +1,4 @@
-# Equalizer DSP 0.2.0 — MGU / iDrive 7
+# Equalizer DSP 0.2.1 — MGU / iDrive 7
 
 Sieben echte parametrische Software-DSP-Bänder ergänzen die bisherige BMW-Klangsteuerung. Die Filter bearbeiten PCM-Audiosamples; sie sind unabhängig davon, ob das Fahrzeug ab Werk einen Siebenband-Equalizer anbietet.
 
@@ -11,6 +11,9 @@ Quelle **NamelsMissing/mgu-apps**, Kanal **main** aktualisieren und **Equalizer 
 Der Store baut das App-Paket auf der MGU mit deren eigenem SDK. Das Repository enthält keine BMW-SDK-Dateien oder Diagnose-PRGs.
 
 ## DSP bedienen
+
+**Fix in 0.2.1:** Die DSP-Bänder, Bypass und DSP-Profile lassen sich auch bei noch offener BMW-Regler-Messung bedienen; eine fehlgeschlagene BMW-Klangeinrichtung blockiert den unabhängigen PCM-DSP nicht mehr. Textuelle Audio-Manager-Erfolgscodes (`E_OK`) werden korrekt als Erfolg behandelt. Die CarPlay-Audioanbindung bleibt weiterhin ausstehend.
+
 
 Im Tab **DSP** sind alle sieben eigenen Filter ohne BMW-Regler-Zuordnung einstellbar:
 

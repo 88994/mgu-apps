@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const C = require('../../apps/equalizer/controls');
-const { Audio, COMMAND, CAREQ } = require('../../apps/equalizer/audio');
+const { Audio, COMMAND, CAREQ, checked } = require('../../apps/equalizer/audio');
 const { Storage } = require('../../apps/equalizer/storage');
 const log = { warn() {}, info() {} };
 let count = 0;
@@ -57,6 +57,20 @@ async function main() {
     await test('built-in presets use learned controls and preserve balance/fader', () => {
         const bs = { bass: binding(), balance: binding('balance', 32), fader: binding('fader', 33) };
         assert.deepEqual(Object.keys(C.preset('bass', bs)), ['bass']); assert(C.preset('bass', bs).bass > 0);
+    });
+    await test('textual E_OK is a success, other named AudioManager errors still fail', async () => {
+        assert.strictEqual(checked({ amError: 'E_OK' }).amError, 'E_OK');
+        assert.throws(() => checked({ amError: 'E_NOT_POSSIBLE' }), /E_NOT_POSSIBLE/);
+        const p = provider(), oldCall = p.sig.call;
+        p.sig.call = async (...args) => {
+            const reply = await oldCall(...args);
+            if (reply.amError === 0) reply.amError = 'E_OK';
+            return reply;
+        };
+        const a = new Audio(p.sig, log); await a.connect();
+        const s = await a.snapshot();
+        assert.equal(s.points.length, 4);
+        assert(!s.errors.some((e) => /E_OK/.test(e)));
     });
     await test('discovery uses actual schema and starts without any write', async () => {
         const p = provider(), a = new Audio(p.sig, log); await a.connect();

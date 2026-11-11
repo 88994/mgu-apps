@@ -2,7 +2,7 @@
   "id": "equalizer",
   "title": "Equalizer",
   "description": "Sieben echte parametrische PCM-DSP-Filter, Profile und vorhandene BMW-Klangregler",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "vendor": "custom",
   "loggingId": "OA9E",
   "iconGlyph": "EQ",

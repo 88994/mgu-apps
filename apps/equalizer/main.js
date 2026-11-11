@@ -50,14 +50,13 @@ mgu.run({
         }
         function editDsp(fn) {
             if (s.busy) return;
-            if (store.state.learning) return message('BMW-Einrichtung zuerst abschließen oder abbrechen.');
+            // OEM tone calibration is unrelated to software DSP. Never block DSP editing.
             if (!s.dspDraft) { s.dspDraft = JSON.parse(JSON.stringify(s.dspConfig)); s.dspBaseRevision = s.dspStatus && s.dspStatus.revision; }
             fn(s.dspDraft);
             if (JSON.stringify(s.dspDraft) === JSON.stringify(s.dspConfig)) s.dspDraft = null;
             message(s.dspDraft ? 'DSP-Änderungen vorbereitet · Mit Übernehmen aktivieren' : 'Keine offenen DSP-Änderungen');
         }
         async function applyDsp() {
-            if (store.state.learning) throw new Error('BMW-Einrichtung zuerst abschließen oder abbrechen.');
             if (!s.dspDraft) return message('Keine DSP-Änderungen vorbereitet.');
             if (!s.dspOnline || s.dspBaseRevision === null) throw new Error('DSP-Dienst nicht verbunden. Abhängigkeit im MGU Store installieren und neu lesen.');
             const expected = s.dspBaseRevision;
@@ -134,6 +133,7 @@ mgu.run({
                 s.dspDraft = config;
                 return message(PROFILES[s.selected.profile][1] + ' als DSP-Entwurf geladen · Mit Übernehmen aktivieren');
             }
+            if (store.state.learning) throw new Error('BMW-Einrichtung zuerst abschließen oder abbrechen.');
             const values = /^[123]$/.test(id) ? (() => {
                 const p = store.state.profiles[id];
                 if (!p) throw new Error('Dieser Profilplatz ist noch leer.');
@@ -154,7 +154,7 @@ mgu.run({
             message(PROFILES[s.selected.profile][1] + ' vorbereitet · Übernehmen aktiviert den Klang');
         }
         function saveProfile() {
-            if (store.state.learning) throw new Error('Einrichtung zuerst abschließen.');
+            // DSP profile save is independent of an OEM tone-control calibration.
             const slot = PROFILES[s.selected.profile][0];
             if (!/^[123]$/.test(slot)) throw new Error('Zum Speichern einen eigenen Profilplatz auswählen.');
             const config = JSON.parse(JSON.stringify(s.dspDraft || s.dspConfig));
@@ -162,7 +162,7 @@ mgu.run({
             message('DSP-Profil ' + slot + ' gespeichert');
         }
         function startLearning() {
-            if (Object.keys(s.draft).length || s.dspDraft) throw new Error('Offene Klangänderungen zuerst übernehmen oder verwerfen.');
+            if (Object.keys(s.draft).length) throw new Error('Offene BMW-Klangänderungen zuerst übernehmen oder verwerfen.');
             store.update((v) => { v.learning = { control: selected().id, shots: [] }; });
             message('BMW-Klangregler auf Mitte stellen, dann Messung erfassen.'); labels();
         }
@@ -222,7 +222,7 @@ mgu.run({
             apply: () => run(apply), next, adjust,
             neutral() { if (s.page === 0) return editDsp((v) => { v.bands[s.selected.eq].gainDb = 0; }); const c = selected(); if (bindings()[c.id]) stage(c.id, bindings()[c.id].center); },
             discard() { if (s.busy) return; s.draft = {}; s.base = {}; s.dspDraft = null; message('Vorbereitete Änderungen verworfen'); },
-            load: () => run(async () => { if (store.state.learning) throw new Error('Einrichtung zuerst abschließen.'); loadProfile(); }),
+            load: () => run(async () => loadProfile()),
             save: () => run(async () => saveProfile()), capture: () => run(capture),
             cancel: () => run(async () => cancelLearning()),
             setup: () => run(async () => startLearning()), export: () => run(primary),
@@ -237,7 +237,7 @@ mgu.run({
             labels();
         }));
         ui.onClick('BTN_INC', () => run(async () => {
-            if (s.page === 2) { if (store.state.learning) throw new Error('Einrichtung zuerst abschließen.'); loadProfile(); }
+            if (s.page === 2) { loadProfile(); }
             else if (s.page === 3) await capture();
             else if (s.page === 4) { await audio.connect(); await read(); message(s.connected ? 'Audioverbindung bereit' : 'Keine Audioantwort · Diagnose prüfen'); }
             else { s.busy = false; adjust(1); s.busy = true; }
