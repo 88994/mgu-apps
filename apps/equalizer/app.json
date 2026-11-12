@@ -1,7 +1,7 @@
 {
   "id": "equalizer",
   "title": "Equalizer",
-  "description": "Sieben echte parametrische PCM-DSP-Filter, Profile und vorhandene BMW-Klangregler",
+  "description": "Experimental seven-band audio equalizer with adjustable filters and saved presets.",
   "version": "0.2.1",
   "vendor": "custom",
   "loggingId": "OA9E",
