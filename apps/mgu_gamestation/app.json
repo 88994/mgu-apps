@@ -1,7 +1,7 @@
 {
   "id": "mgu_gamestation",
   "title": "MGU GameStation",
-  "description": "Offline NES, SNES, Game Boy / Color, Arcade: two phones, iDrive or hybrid controller",
+  "description": "Offline retro games with iDrive or phone controllers and multiplayer options.",
   "version": "0.2.0",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAG1",
