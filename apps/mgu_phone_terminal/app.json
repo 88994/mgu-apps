@@ -1,7 +1,7 @@
 {
   "id": "mgu_phone_terminal",
   "title": "Phone Terminal",
-  "description": "Secure QR pairing for a temporary mobile terminal on the MGU",
+  "description": "Temporary phone-browser terminal with QR pairing, command output, and file downloads.",
   "version": "0.1.6",
   "vendor": "Jürgen",
   "loggingId": "OTRM",
