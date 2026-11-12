@@ -1,7 +1,7 @@
 {
   "id": "mgu_gamesnacks",
   "title": "MGU GameSnacks (Preview)",
-  "description": "Standalone offline HTML5 game catalog prototype; original games require individually verified distribution rights and MGU browser support",
+  "description": "Experimental offline HTML5 game launcher for the iDrive display.",
   "version": "0.1.1",
   "vendor": "G21 Offline Lab (unofficial)",
   "loggingId": "OGSN",
