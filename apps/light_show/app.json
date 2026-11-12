@@ -1,7 +1,7 @@
 {
   "id": "light_show",
   "title": "Light Show",
-  "description": "Experimental ID7 light controller: timed patterns, legacy BDC output diagnostics and guarded FLM02 LED-channel tests with finite pulses, explicit StopRoutine and persistent recovery.",
+  "description": "Experimental exterior light patterns and controlled light-output tests for compatible vehicles.",
   "version": "0.2.3",
   "vendor": "custom",
   "loggingId": "OAL9",
