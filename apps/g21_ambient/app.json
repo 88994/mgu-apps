@@ -1,7 +1,7 @@
 {
   "id": "g21_ambient",
   "title": "G21 Ambient Lighting",
-  "description": "Ambient RGB, discoverable BDC LIN zones, six saved profiles and drive-mode colour plans; guarded temporary output and offline menu-11 plan",
+  "description": "Choose ambient-light colors, configure zones, and save presets. Vehicle color control is experimental.",
   "version": "0.4.0",
   "vendor": "G21 Offline Lab",
   "loggingId": "OAB1",
