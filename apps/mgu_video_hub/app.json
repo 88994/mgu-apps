@@ -1,7 +1,7 @@
 {
   "id": "mgu_video_hub",
   "title": "MGU Video Hub",
-  "description": "Parked-only video library with optional YouTube stream support and phone import",
+  "description": "Play local videos and open YouTube links while parked. Extra playback tools may be required.",
   "version": "0.1.4",
   "mguInternet": true,
   "vendor": "G21 Offline Lab",
