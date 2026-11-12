@@ -1,7 +1,7 @@
 {
   "id": "custom_cluster",
   "title": "Custom Cluster",
-  "description": "G80, G21 and classic 6WB digital cluster styles, map-safe RGB themes, shared Waze renderer and iPhone bridge",
+  "description": "Experimental custom instrument-cluster layouts and Waze integration tests.",
   "version": "0.5.9",
   "vendor": "custom",
   "loggingId": "OAQ7",
