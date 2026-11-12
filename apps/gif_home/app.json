@@ -1,7 +1,7 @@
 {
   "id": "gif_home",
   "title": "GIF Home",
-  "description": "Offline animated GIF home-screen widget with QR-code phone upload for iDrive 7",
+  "description": "Animated home-screen GIF widget with built-in animations and phone uploads via QR code.",
   "version": "0.3.1",
   "vendor": "custom",
   "loggingId": "GFI1",
