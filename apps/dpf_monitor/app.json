@@ -1,7 +1,7 @@
 {
   "id": "dpf_monitor",
   "title": "DPF Monitor",
-  "description": "Live, read-only DDE DPF measurements with persistent real-reading history",
+  "description": "View live DPF sensor data and recorded regeneration history from the engine control unit.",
   "version": "0.2.8",
   "vendor": "custom",
   "loggingId": "OA9D",
