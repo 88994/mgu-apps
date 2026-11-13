@@ -1,0 +1,22 @@
+{
+  "id": "carplay_cluster",
+  "title": "CarPlay Cluster",
+  "description": "CarPlay mirroring in the instrument-cluster map slot through the open source waze-on-cluster service.",
+  "version": "0.1.0",
+  "vendor": "custom",
+  "loggingId": "OACP",
+  "iconGlyph": "CP",
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "CarPlay Cluster",
+      "buttons": [["BTN_PATCH", "Patch / Remove CarPlay"], ["BTN_SHOW", "Show / Hide projection"],
+                  ["BTN_GUIDE", "BMW turn box"], ["BTN_RESTART", "Restart head unit"]]
+    }
+  ],
+  "settings": [
+    {"key": "autoStart", "label": "Apply patch and show map when opened", "type": "bool", "default": false},
+    {"key": "hideGuidance", "label": "Hide BMW turn-by-turn box while map shows", "type": "bool", "default": false}
+  ]
+}

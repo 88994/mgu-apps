@@ -120,7 +120,7 @@
       "id": "mgu_video_hub",
       "kind": "app",
       "title": "MGU Video Hub",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "path": "apps/mgu_video_hub",
       "icon": "icon.png",
       "mguHmi": [
@@ -183,6 +183,25 @@
       "requires": {
         "cluster-render": "0.4.0"
       },
+      "build": {
+        "python": "tools/build_store_app.py",
+        "args": [
+          "{id}"
+        ],
+        "sdk": "oap-sdk",
+        "output": "dist/{id}@{version}.tgz"
+      }
+    },
+    {
+      "id": "carplay_cluster",
+      "kind": "app",
+      "title": "CarPlay Cluster",
+      "version": "0.1.0",
+      "path": "apps/carplay_cluster",
+      "icon": "icon.png",
+      "mguHmi": [
+        "ID7"
+      ],
       "build": {
         "python": "tools/build_store_app.py",
         "args": [
