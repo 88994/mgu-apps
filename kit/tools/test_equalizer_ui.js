@@ -75,7 +75,7 @@ async function main() {
         assert(on && bypass, 'dedicated DSP and bypass buttons');
         await on.run(); assert.equal(dsp.config.enabled, true, 'DSP ON must commit immediately');
         await bypass.run(); assert.equal(dsp.config.enabled, false, 'BYPASS must commit immediately');
-        await hu.display.pageTargets.find((q) => q.key === 'dsp-enable').run();
+        await on.run(); assert.equal(dsp.config.enabled, true, 'DSP ON direct re-activation');
         await press('BTN_APPLY'); assert.equal(dsp.config.enabled, true);
         await press('BTN_PARAM'); await press('BTN_INC'); await press('BTN_APPLY'); assert.equal(dsp.config.bands[0].frequencyHz, 110);
         await press('BTN_PARAM'); await press('BTN_INC'); await press('BTN_APPLY'); assert.equal(dsp.config.bands[0].q, 1.1);
