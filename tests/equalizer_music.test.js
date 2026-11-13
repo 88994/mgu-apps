@@ -43,7 +43,7 @@ async function playbackTest() {
         child.kill = () => { child.stdin.destroy(); child.emit('close', null); };
         return child;
     };
-    const player = new MusicPlayer({ findAplay: () => '/fake/aplay', spawn, dspClient: { PcmFilter: PassThroughDsp },
+    const player = new MusicPlayer({ findAplay: () => '/fake/aplay', findFfmpeg: () => null, spawn, dspClient: { PcmFilter: PassThroughDsp },
         onState: s => states.push(s) });
     await new Promise((resolve, reject) => {
         const old = player.onState;
@@ -55,10 +55,34 @@ async function playbackTest() {
     assert.strictEqual(player.active, null);
     assert(states.some(s => s.status === 'playing') && states.some(s => s.status === 'finished'));
     const fail = [];
-    const noAlsa = new MusicPlayer({ findAplay: () => null, dspClient: { PcmFilter: PassThroughDsp }, onState: s => fail.push(s) });
+    const noAlsa = new MusicPlayer({ findAplay: () => null, findFfmpeg: () => null,
+        dspClient: { PcmFilter: PassThroughDsp }, onState: s => fail.push(s) });
     assert.strictEqual(noAlsa.play(), false);
     assert.strictEqual(fail[0].status, 'error');
     assert.strictEqual(noAlsa.active, null);
-    console.log('PASS test music playback pipeline, stop/completion, and missing ALSA error');
+    const ffmpegCalls = [];
+    const fakeFfmpeg = (bin, args) => {
+        ffmpegCalls.push({ bin, args });
+        const child = new EventEmitter();
+        child.stderr = new EventEmitter();
+        child.stdin = new Writable({ write(buf, enc, cb) { cb(); } });
+        child.stdin.on('finish', () => setImmediate(() => child.emit('close', 0)));
+        child.kill = () => child.stdin.destroy();
+        return child;
+    };
+    const ffmpegPlayer = new MusicPlayer({ findAplay: () => null, findFfmpeg: () => '/fake/ffmpeg',
+        dspClient: { PcmFilter: PassThroughDsp }, spawn: fakeFfmpeg });
+    await new Promise((resolve, reject) => {
+        ffmpegPlayer.onState = s => {
+            if (s.status === 'finished') resolve();
+            if (s.status === 'error') reject(new Error(s.detail));
+        };
+        assert.strictEqual(ffmpegPlayer.play(), true);
+    });
+    assert.strictEqual(ffmpegCalls.length, 1);
+    assert.strictEqual(ffmpegCalls[0].bin, '/fake/ffmpeg');
+    assert.deepStrictEqual(ffmpegCalls[0].args, ['-hide_banner', '-nostdin', '-loglevel', 'error',
+        '-f', 's16le', '-ar', '44100', '-ac', '2', '-i', 'pipe:0', '-f', 'alsa', 'default']);
+    console.log('PASS test music aplay and ffmpeg fallback, missing player, mock playback');
 }
 sourceTest().then(playbackTest).catch(e => { console.error(e.stack); process.exitCode = 1; });

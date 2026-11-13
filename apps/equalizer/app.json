@@ -2,7 +2,7 @@
   "id": "equalizer",
   "title": "Equalizer",
   "description": "Experimental seven-band audio equalizer with adjustable filters and saved presets.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "vendor": "custom",
   "loggingId": "OA9E",
   "iconGlyph": "EQ",
@@ -33,6 +33,8 @@
       ["BTN_PAGE", "Ansicht wechseln"],
       ["BTN_REFRESH", "Werte lesen"],
       ["BTN_MUSIC", "Testmusik"],
+      ["BTN_DSP_ON", "DSP EIN"],
+      ["BTN_BYPASS", "Bypass EIN"],
       ["BTN_SETTINGS", "Einstellungen"]
     ]
   }],

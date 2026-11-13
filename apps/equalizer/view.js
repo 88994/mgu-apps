@@ -49,7 +49,9 @@ function draw(r, t, s, a) {
             target(c.id, x, 114, w, 88, () => a.select(c.id));
         });
         panel(1160, 114, 398, 326);
-        button('dsp-enable', 1184, 130, 348, config.enabled ? 'DSP ein · Bypass wählen' : 'Bypass · DSP einschalten', a.toggleDsp, config.enabled);
+        // Highlight the *committed* state, not an unsaved EQ draft.
+        button('dsp-on', 1184, 130, 168, 'DSP EIN', a.dspOn, !!s.dspConfig.enabled);
+        button('dsp-bypass', 1363, 130, 169, 'BYPASS EIN', a.dspBypass, !s.dspConfig.enabled);
         const paramNames = ['Gain', 'Frequenz', 'Q / Bandbreite', 'Vorverstärkung'];
         const paramValue = [db(chosen.gainDb), hz(chosen.frequencyHz), chosen.q.toFixed(1), db(config.preampDb)][s.dspParameter];
         button('dsp-param', 1184, 194, 348, paramNames[s.dspParameter] + ': ' + paramValue, a.parameter);
@@ -61,7 +63,7 @@ function draw(r, t, s, a) {
         const play = s.testMusic && s.testMusic.playing;
         button('test-music', 1184, 382, 168, play ? 'Stop' : 'Testmusik', a.testMusic, play);
         button('dsp-headroom', 1363, 382, 169, config.autoHeadroom ? 'Headroom auto' : 'Headroom aus', a.headroom);
-        text('HR ' + db(effective) + ' · ' + (s.testMusic ? s.testMusic.status : 'idle'), 1184, 466, 17, DIM);
+        text('HR ' + db(effective) + ' · ' + (s.testMusic ? s.testMusic.status : 'idle') + ' · ' + (s.dspConfig.enabled ? 'DSP aktiv' : 'Bypass aktiv'), 1184, 466, 17, DIM);
     } else if (s.page === 1) {
         text('BASS, HÖHEN UND VERTEILUNG', 44, 90, 23, DIM, { spacing: 2 });
         C.CONTROLS.filter((c) => c.group === 'tone').forEach((c, i) => {
@@ -121,7 +123,7 @@ function draw(r, t, s, a) {
         text('VERBINDUNG & WERTE', 73, 136, 23, DIM, { spacing: 1 });
         [['DSP-Dienst', s.dspOnline ? 'Verbunden · ' + (s.dspStatus.streams || []).length + ' PCM-Quellen' : 'Nicht verbunden'],
          ['PCM-Frames gesamt', s.dspStatus ? s.dspStatus.frames : '--'], ['BMW-Klangwerte', shot.points.length],
-         ['CarPlay / Radio', 'Noch nicht an DSP angebunden'], ['Version', '0.2.2 · Testmusik experimentell']].forEach((v, i) => {
+         ['CarPlay / Radio', 'Noch nicht an DSP angebunden'], ['Version', '0.2.3 · Testmusik experimentell']].forEach((v, i) => {
             text(v[0], 73, 187 + i * 42, 23, DIM); text(v[1], 774, 187 + i * 42, 22, WHITE, { align: 'right' });
         });
         text('LETZTE MELDUNGEN', 856, 136, 23, DIM, { spacing: 1 });

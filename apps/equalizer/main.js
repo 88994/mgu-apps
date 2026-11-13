@@ -27,6 +27,7 @@ mgu.run({
         const controls = () => C.CONTROLS.filter((c) => c.group === (s.page === 1 ? 'tone' : 'eq'));
         const selected = () => s.page === 3 ? C.CONTROLS[s.selected.setup] : controls()[s.selected[s.page === 1 ? 'tone' : 'eq']];
         function message(text) { s.status = text; if (renderLoop) renderLoop.kick(); }
+        // Only code paths through applyDsp can change DSP state; BMW tone learning stays separate.
         const testPlayer = new MusicPlayer({ dspRuntime: dspOpts.runtime,
             onState: (info) => {
                 s.testMusic = info;
@@ -72,8 +73,21 @@ mgu.run({
             s.dspConfig = result.config; s.dspStatus = result; s.dspDraft = null;
             await readDsp();
             if (!s.dspOnline || s.dspStatus.revision !== result.revision || JSON.stringify(s.dspConfig) !== JSON.stringify(result.config)) throw new Error('DSP-Rücklesen nicht bestätigt. Diagnose prüfen.');
-            const live = s.dspStatus.streams.some((x) => x.frames > 0 && x.lastFrameAt && Date.now() - x.lastFrameAt < 3000);
-            message(s.dspConfig.enabled ? live ? 'DSP übernommen · PCM-Filterung aktiv' : 'DSP gespeichert · Wartet auf PCM-Quelle, z. B. Video Hub' : 'DSP auf Bypass · Unveränderte PCM-Ausgabe');
+            const live = (s.dspStatus.streams || []).some((x) => x.frames > 0 && x.lastFrameAt && Date.now() - x.lastFrameAt < 3000);
+            message(s.dspConfig.enabled ? live ? 'DSP eingeschaltet · PCM-Filterung aktiv' : 'DSP eingeschaltet · keine PCM-Quelle verbunden' : 'Bypass eingeschaltet · PCM-Daten unverändert');
+        }
+        async function setBypass(enabled) {
+            if (!s.dspOnline || !s.dspStatus) throw new Error('DSP-Dienst nicht verbunden. In Diagnose prüfen.');
+            // Explicit bypass buttons commit in one step and include any prepared
+            // EQ changes: no hidden second click on "DSP übernehmen" is required.
+            const next = JSON.parse(JSON.stringify(s.dspDraft || s.dspConfig));
+            next.enabled = !!enabled;
+            if (!s.dspDraft && s.dspConfig.enabled === !!enabled)
+                return message(enabled ? 'DSP ist bereits eingeschaltet' : 'Bypass ist bereits eingeschaltet');
+            s.dspDraft = next;
+            if (s.dspBaseRevision === null || s.dspBaseRevision === undefined)
+                s.dspBaseRevision = s.dspStatus.revision;
+            await applyDsp();
         }
         function stage(id, raw) {
             if (s.busy || store.state.learning) return;
@@ -201,7 +215,7 @@ mgu.run({
             if (s.page === 3) return capture();
             if (s.page === 4) {
                 const file = store.export({ bindings: bindings(), learning: store.state.learning, snapshot: s.snapshot, errors: audio.errors,
-                    dsp: s.dspStatus, dspOnline: s.dspOnline, lastMessage: s.diagnostics });
+                    dsp: s.dspStatus, dspOnline: s.dspOnline, testMusic: s.testMusic, lastMessage: s.diagnostics });
                 message('Diagnose gespeichert: equalizer-diagnostics.json'); log.info('diagnostic export ' + file); return;
             }
             return apply();
@@ -226,7 +240,9 @@ mgu.run({
             set(id, n) { if (bindings()[id]) stage(id, C.rawFromNormalized(bindings()[id], n)); },
             gain(i, db) { editDsp((v) => { v.bands[i].gainDb = C.clamp(Math.round(db * 2) / 2, -12, 12); }); },
             parameter() { s.dspParameter = (s.dspParameter + 1) % 4; message('DSP-Regler: ' + ['Gain in dB', 'Frequenz in Hz', 'Q / Bandbreite', 'Vorverstärkung in dB'][s.dspParameter]); },
-            toggleDsp() { editDsp((v) => { v.enabled = !v.enabled; }); },
+            toggleDsp() { return run(async () => setBypass(!s.dspConfig.enabled)); },
+            dspOn() { return run(async () => setBypass(true)); },
+            dspBypass() { return run(async () => setBypass(false)); },
             testMusic() { if (!s.busy && s.page === 0) testPlayer.toggle(); },
             headroom() { editDsp((v) => { v.autoHeadroom = !v.autoHeadroom; }); },
             profile(i) { if (!s.busy) s.selected.profile = i; },
@@ -240,6 +256,8 @@ mgu.run({
         };
         ui.onClick('BTN_NEXT', next);
         ui.onClick('BTN_MUSIC', () => actions.testMusic());
+        ui.onClick('BTN_DSP_ON', () => actions.dspOn());
+        ui.onClick('BTN_BYPASS', () => actions.dspBypass());
         ui.onClick('BTN_PARAM', () => { if (s.page === 0 && !s.busy) actions.parameter(); });
         ui.onClick('BTN_DEC', () => run(async () => {
             if (s.page === 2) saveProfile();

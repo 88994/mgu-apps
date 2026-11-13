@@ -91,19 +91,22 @@ class MusicSource extends Readable {
         this.push(out);
     }
 }
-function aplayPath() {
-    const candidates = String(process.env.PATH || '').split(':').filter(Boolean).map(p => path.join(p, 'aplay'));
+function findExecutable(name) {
+    const candidates = String(process.env.PATH || '').split(':').filter(Boolean).map(p => path.join(p, name));
     for (const p of candidates) {
         try { fs.accessSync(p, fs.constants.X_OK); return p; } catch (_) {}
     }
     return null;
 }
+function aplayPath() { return findExecutable('aplay'); }
+function ffmpegPath() { return findExecutable('ffmpeg'); }
 class MusicPlayer {
     constructor(opts) {
         opts = opts || {};
         this.dspRuntime = opts.dspRuntime;
         this.spawn = opts.spawn || cp.spawn;
         this.findAplay = opts.findAplay || aplayPath;
+        this.findFfmpeg = opts.findFfmpeg || ffmpegPath;
         this.dspClient = opts.dspClient || require('./kit/dsp-client');
         this.onState = opts.onState || (() => {});
         this.active = null;
@@ -111,28 +114,39 @@ class MusicPlayer {
     state(status, detail) { this.onState({ status, detail: detail || '', playing: status === 'playing' }); }
     play() {
         this.stop();
-        const bin = this.findAplay();
-        if (!bin) { this.state('error', 'aplay fehlt auf der MGU. Keine Audiowiedergabe möglich.'); return false; }
+        const aplay = this.findAplay();
+        const ffmpeg = aplay ? null : this.findFfmpeg();
+        const backend = aplay ? 'aplay' : ffmpeg ? 'ffmpeg' : null;
+        const bin = aplay || ffmpeg;
+        if (!bin) {
+            this.state('error', 'Kein Audio-Player: aplay und ffmpeg fehlen. ALSA-Ausgabe nicht verfügbar.');
+            return false;
+        }
+        // FFmpeg may provide ALSA output even on systems without the aplay CLI.
+        // Never probe a non-default BMW/SmartX stream or modify system audio routing.
+        const args = aplay
+            ? ['-q', '-t', 'raw', '-f', 'S16_LE', '-c', '2', '-r', String(RATE)]
+            : ['-hide_banner', '-nostdin', '-loglevel', 'error', '-f', 's16le',
+                '-ar', String(RATE), '-ac', '2', '-i', 'pipe:0', '-f', 'alsa', 'default'];
         let child;
         try {
-            child = this.spawn(bin, ['-q', '-t', 'raw', '-f', 'S16_LE', '-c', '2', '-r', String(RATE)],
-                { stdio: ['pipe', 'ignore', 'pipe'] });
-        } catch (e) { this.state('error', 'ALSA-Start fehlgeschlagen: ' + e.message); return false; }
+            child = this.spawn(bin, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+        } catch (e) { this.state('error', backend + '-Start fehlgeschlagen: ' + e.message); return false; }
         const source = new MusicSource();
         const filter = new this.dspClient.PcmFilter({ sampleRate: RATE, channels: 2,
             source: 'equalizer_test_music', runtime: this.dspRuntime, timeout: 600,
             onFallback: (e) => { if (this.active && this.active.child === child) this.state('playing', 'DSP nicht erreichbar; Testmusik läuft ohne Filter: ' + e); } });
-        const run = { source, filter, child, error: '' };
+        const run = { source, filter, child, backend, error: '' };
         this.active = run;
-        this.state('playing', 'Testmusik gestartet · Wiedergabe über ALSA noch nicht bestätigt');
+        this.state('playing', 'Testmusik an ' + backend + ' gesendet · BMW-Lautsprecher nicht bestätigt');
         child.stderr.on('data', data => { if (run.error.length < 700) run.error += data.toString('utf8'); });
-        child.on('error', e => { if (this.active === run) this.fail(run, 'aplay: ' + e.message); });
+        child.on('error', e => { if (this.active === run) this.fail(run, backend + ': ' + e.message); });
         child.on('close', (code) => {
             if (this.active !== run) return;
             this.active = null;
             source.destroy(); filter.destroy();
             if (code === 0) this.state('finished', 'Testmusik beendet. Hörbare Ausgabe hängt vom ALSA-Routing ab.');
-            else this.state('error', 'ALSA-Ausgabe fehlgeschlagen (Code ' + code + '): ' + (run.error.trim().slice(0, 180) || 'keine Ausgabegerät-Details'));
+            else this.state('error', backend + ': ALSA-Ausgabe fehlgeschlagen (Code ' + code + '): ' + (run.error.trim().slice(0, 180) || 'Standard-ALSA-Gerät fehlt'));
         });
         filter.on('error', e => { if (this.active === run) this.fail(run, 'DSP-Pipeline: ' + e.message); });
         child.stdin.on('error', e => { if (this.active === run) this.fail(run, 'ALSA-Stream: ' + e.message); });
@@ -156,4 +170,4 @@ class MusicPlayer {
     }
     toggle() { return this.active ? (this.stop(), false) : this.play(); }
 }
-module.exports = { MusicSource, MusicPlayer, RATE, BPM, BARS, TOTAL_FRAMES };
+module.exports = { MusicSource, MusicPlayer, RATE, BPM, BARS, TOTAL_FRAMES, findExecutable };
